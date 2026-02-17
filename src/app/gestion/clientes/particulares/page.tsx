@@ -129,7 +129,8 @@ export default function GestionParticulares() {
             <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar servicios VIP..." className="w-full pl-4 pr-3 py-3 rounded-2xl border border-gray-100 bg-white text-sm" />
           </div>
           <button onClick={() => setFiltroModalidad(null)} className={`w-full text-left p-3 rounded-2xl transition-all text-[10px] tracking-widest flex items-center gap-2 ${filtroModalidad === null ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-black'}`}>
-          <Crown size={12}/> TODAS LAS MODALIDADES
+            <Crown size={12}/> TODAS LAS MODALIDADES
+          </button>
         </div>
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-4 uppercase flex items-center gap-2"><Zap size={12}/> Filtrar Catálogo</h3>
         <div className="space-y-2">
