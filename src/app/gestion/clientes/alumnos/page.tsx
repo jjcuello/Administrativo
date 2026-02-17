@@ -191,9 +191,9 @@ export default function GestionFamilias() {
         <div className="relative mb-6"><Search size={14} className="absolute left-4 top-4 text-gray-300"/><input placeholder="BUSCAR..." className="w-full bg-white rounded-2xl p-4 pl-10 text-[10px] font-bold border border-gray-100 shadow-sm focus:border-black outline-none" value={busqueda} onChange={e => setBusqueda(e.target.value)} /></div>
         <button onClick={() => { setRepSeleccionado(null); setVista('form_rep'); setFormRep({nombres:'', apellidos:'', cedula_tipo:'V', cedula_numero:'', telefono:'', email:''}) }} className="w-full bg-black text-white p-4 rounded-2xl mb-6 text-xs flex items-center justify-center gap-2 hover:scale-105 transition-all font-black italic"><PlusCircle size={14}/> NUEVA FAMILIA</button>
         <div className="space-y-2 overflow-y-auto flex-1 pr-2">
-          {familias.filter((f:any)=>f.apellidos.toLowerCase().includes(busqueda.toLowerCase())).map((f:any) => (
-            <button key={f.id} onClick={() => seleccionarFamilia(f)} className={`w-full text-left p-4 rounded-2xl border transition-all ${repSeleccionado?.id === f.id ? 'bg-black text-white border-black shadow-xl scale-95' : 'bg-white border-gray-100 hover:border-gray-300 shadow-sm'}`}><p className="text-xs font-black">{f.apellidos}, {f.nombres}</p><p className={`text-[9px] font-bold ${repSeleccionado?.id === f.id ? 'text-gray-400' : 'text-gray-300'}`}>{f.cedula_tipo}-{f.cedula_numero}</p></button>
-          ))}
+          {familias.filter((f: Representante) => (f.apellidos || '').toLowerCase().includes(busqueda.toLowerCase())).map((f: Representante) => (
+              <button key={f.id} onClick={() => seleccionarFamilia(f)} className={`w-full text-left p-4 rounded-2xl border transition-all ${repSeleccionado?.id === f.id ? 'bg-black text-white border-black shadow-xl scale-95' : 'bg-white border-gray-100 hover:border-gray-300 shadow-sm'}`}><p className="text-xs font-black">{f.apellidos}, {f.nombres}</p><p className={`text-[9px] font-bold ${repSeleccionado?.id === f.id ? 'text-gray-400' : 'text-gray-300'}`}>{f.cedula_tipo}-{f.cedula_numero}</p></button>
+            ))}
         </div>
       </aside>
 
@@ -217,7 +217,7 @@ export default function GestionFamilias() {
             <div>
               <div className="flex justify-between items-end mb-6 px-4"><h3 className="text-xs font-black tracking-widest uppercase flex items-center gap-2"><Baby size={16}/> Hijos / Alumnos registrados</h3><button onClick={() => { setFormAlumno({nombres:'', apellidos:repSeleccionado.apellidos, fecha_nacimiento:'', condiciones_medicas:'', talla_uniforme:''}); setVista('form_alumno') }} className="text-[10px] bg-black text-white px-4 py-2 rounded-full font-black italic hover:scale-105 transition-all shadow-lg">+ AGREGAR NIÑO</button></div>
               <div className="space-y-4">
-                {repSeleccionado.alumnos?.map((a: any) => (
+                {repSeleccionado.alumnos?.map((a: Alumno) => (
                   <div key={a.id} onClick={() => cargarInscripciones(a.id)} className="p-6 bg-white border border-gray-100 rounded-[2.5rem] shadow-sm flex justify-between items-center group hover:border-black hover:shadow-xl transition-all cursor-pointer">
                     <div><p className="text-lg font-black italic">{a.nombres} {a.apellidos}</p><p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Nacimiento: {a.fecha_nacimiento || 'N/A'}</p></div>
                     <button onClick={(e) => { e.stopPropagation(); abrirInscripcion(a); }} className="text-[10px] bg-black text-white px-5 py-3 rounded-2xl transition-all flex items-center gap-2 font-black italic shadow-lg hover:scale-110"><Activity size={12}/> INSCRIBIR EN CLASE</button>

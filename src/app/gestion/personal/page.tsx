@@ -5,18 +5,21 @@ import { useRouter } from 'next/navigation'
 import { UserPlus, Edit3, UserMinus, Landmark, Smartphone, School, UserCheck, ChevronRight, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
+type Personal = { id?: number; nombres?: string; apellidos?: string; cedula_tipo?: string; cedula_numero?: string; cargo?: string; estado?: string; monto_base_mensual?: number }
+type ColegioShort = { id?: number; nombre?: string }
+
 export default function GestionPersonal() {
   const router = useRouter()
   const [vista, setVista] = useState('menu') 
-  const [seleccionado, setSeleccionado] = useState(null)
+  const [seleccionado, setSeleccionado] = useState<Personal | null>(null)
   const [formData, setFormData] = useState({
     nombres: '', apellidos: '', cedula_tipo: 'V', cedula_numero: '',
     cargo: '', tipo_personal: 'profesor', monto_base_mensual: '',
     banco_nombre: '', banco_numero_cuenta: '',
     pm_telefono: '', pm_cedula: '', pm_banco: ''
   })
-  const [listaPersonal, setListaPersonal] = useState([])
-  const [colegios, setColegios] = useState([])
+  const [listaPersonal, setListaPersonal] = useState<Personal[]>([])
+  const [colegios, setColegios] = useState<ColegioShort[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
@@ -25,22 +28,22 @@ export default function GestionPersonal() {
   const cargarDatos = async (term?: string) => {
     if (!term) {
       const { data: pers } = await supabase.from('personal').select('*').order('estado', { ascending: true }).order('apellidos', { ascending: true })
-      if (pers) setListaPersonal(pers)
+      if (pers) setListaPersonal(pers as Personal[])
     } else {
       const q = `%${term}%`
       const { data: pers } = await supabase.from('personal').select('*')
         .or(`nombres.ilike.${q},apellidos.ilike.${q},cedula_numero.ilike.${q}`)
         .order('estado', { ascending: true }).order('apellidos', { ascending: true })
-      if (pers) setListaPersonal(pers)
+      if (pers) setListaPersonal(pers as Personal[])
     }
     const { data: col } = await supabase.from('colegios').select('id, nombre').order('nombre')
-    if (col) setColegios(col)
+    if (col) setColegios(col as ColegioShort[])
   }
 
   useEffect(() => { (async () => { await cargarDatos() })() }, [])
   useEffect(() => { (async () => { await cargarDatos(debounced) })() }, [debounced])
 
-  const manejarSeleccion = (p: any) => { setSeleccionado(p); setVista('menu'); setMensaje('') }
+  const manejarSeleccion = (p: Personal) => { setSeleccionado(p); setVista('menu'); setMensaje('') }
 
   const iniciarEdicion = () => {
     if (!seleccionado) return

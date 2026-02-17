@@ -1,6 +1,6 @@
 'use client'
 import { useRouter } from 'next/navigation'
-import { Building2, Trophy, Landmark, Users, Monitor, ArrowLeft, Settings } from 'lucide-react'
+import { Building2, Trophy, Landmark, Users, Monitor, ArrowLeft } from 'lucide-react'
 
 export default function ClientesDashboard() {
   const router = useRouter()

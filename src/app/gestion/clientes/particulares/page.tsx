@@ -19,14 +19,14 @@ type Clase = {
 export default function GestionParticulares() {
   const router = useRouter()
   const [vista, setVista] = useState('menu') 
-  const [seleccionado, setSeleccionado] = useState<any>(null)
-  const [filtroModalidad, setFiltroModalidad] = useState(null)
+  const [seleccionado, setSeleccionado] = useState<Clase | null>(null)
+  const [filtroModalidad, setFiltroModalidad] = useState<string | null>(null)
   
   const [formData, setFormData] = useState({
     nombre: '', modalidad: 'Virtual', profesor_id: '', tarifa: '', tipo_cobro: 'Por Hora'
   })
   
-  const [profesores, setProfesores] = useState<any[]>([])
+  const [profesores, setProfesores] = useState<{id: number; nombres: string; apellidos: string}[]>([])
   const [clases, setClases] = useState<Clase[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)

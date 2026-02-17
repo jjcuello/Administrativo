@@ -20,15 +20,15 @@ type Grupo = {
 export default function GestionTardes() {
   const router = useRouter()
   const [vista, setVista] = useState('menu') 
-  const [seleccionado, setSeleccionado] = useState<any>(null)
-  const [filtroSede, setFiltroSede] = useState(null)
+  const [seleccionado, setSeleccionado] = useState<Grupo | null>(null)
+  const [filtroSede, setFiltroSede] = useState<number | null>(null)
   
   const [formData, setFormData] = useState({
     nombre: '', colegio_id: '', profesor_id: '', horario: '', tarifa_mensual: '', cupos_max: ''
   })
   
-  const [sedes, setSedes] = useState<any[]>([])
-  const [profesores, setProfesores] = useState<any[]>([])
+  const [sedes, setSedes] = useState<{id: number; nombre: string}[]>([])
+  const [profesores, setProfesores] = useState<{id: number; nombres: string; apellidos: string}[]>([])
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
