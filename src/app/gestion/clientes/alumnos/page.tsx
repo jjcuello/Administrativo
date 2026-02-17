@@ -123,7 +123,7 @@ export default function GestionFamilias() {
   }, 0)
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden -m-12 uppercase tracking-tight font-black text-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       {/* MODAL DE INSCRIPCIÓN PREMIUM */}
       {mostrarModalIns && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -235,7 +235,7 @@ export default function GestionFamilias() {
       </main>
 
       {/* 3. DERECHA: FINANZAS DINÁMICAS */}
-      <aside className="w-[30%] bg-gray-50/20 p-8 overflow-y-auto">
+      <aside className="md:w-2/5 w-full bg-gray-50/20 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-8 uppercase font-black flex items-center gap-2"><CreditCard size={12}/> ESTADO DE CUENTA B2C</h3>
         {repSeleccionado ? (
           <div className="space-y-8 animate-in slide-in-from-right duration-500">

@@ -106,9 +106,9 @@ export default function GestionParticulares() {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden -m-12 uppercase tracking-tight font-black text-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       {/* 1. IZQUIERDA: FILTRO */}
-      <aside className="w-[20%] border-r border-gray-100 bg-gray-50/50 p-8 overflow-y-auto">
+      <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/50 p-6 md:p-8 overflow-y-auto">
         <button onClick={() => setFiltroModalidad(null)} className={`w-full text-left p-3 mb-4 rounded-2xl transition-all text-[10px] tracking-widest flex items-center gap-2 ${filtroModalidad === null ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-black'}`}>
           <Crown size={12}/> TODAS LAS MODALIDADES
         </button>
@@ -123,7 +123,7 @@ export default function GestionParticulares() {
         </div>
       </aside>
       {/* 2. CENTRO: COMANDOS Y FORMULARIO */}
-      <main className="w-[50%] p-12 overflow-y-auto border-r border-gray-100 bg-white">
+      <main className="md:w-3/5 w-full p-6 md:p-12 overflow-y-auto md:border-r border-gray-100 bg-white">
         <header className="mb-10 text-black">
           <button onClick={() => router.back()} className="flex items-center gap-2 text-[10px] text-gray-400 hover:text-black mb-6 transition-all uppercase font-black tracking-widest">
             <ArrowLeft size={14} /> VOLVER ATRÁS
@@ -201,7 +201,7 @@ export default function GestionParticulares() {
         )}
       </main>
       {/* 3. DERECHA: CATÁLOGO */}
-      <aside className="w-[30%] bg-gray-50/20 p-8 overflow-y-auto">
+      <aside className="md:w-1/5 w-full bg-gray-50/20 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase font-black flex justify-between">
           <span>Catálogo de Servicios</span>
           <span className="bg-black text-white px-2 py-0.5 rounded-full">{clasesMostradas.length}</span>

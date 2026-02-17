@@ -117,9 +117,9 @@ export default function GestionTardes() {
   const gruposMostrados = filtroSede ? grupos.filter(g => g.colegio_id === filtroSede) : grupos
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden -m-12 uppercase tracking-tight font-black text-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       {/* IZQUIERDA */}
-      <aside className="w-[20%] border-r border-gray-100 bg-gray-50/50 p-8 overflow-y-auto">
+      <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/50 p-6 md:p-8 overflow-y-auto">
         <button onClick={() => setFiltroSede(null)} className={`w-full text-left p-3 mb-4 rounded-2xl transition-all text-[10px] tracking-widest font-black ${filtroSede === null ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>TODAS LAS SEDES</button>
         <div className="space-y-2">
           {sedes.map(s => (
@@ -129,7 +129,7 @@ export default function GestionTardes() {
       </aside>
 
       {/* CENTRO */}
-      <main className="w-[50%] p-12 overflow-y-auto border-r border-gray-100 bg-white">
+      <main className="md:w-3/5 w-full p-6 md:p-12 overflow-y-auto md:border-r border-gray-100 bg-white">
         <header className="mb-10 text-black">
           <button onClick={() => router.back()} className="flex items-center gap-2 text-[10px] text-gray-400 hover:text-black mb-6 transition-all tracking-widest font-black uppercase"><ArrowLeft size={14} /> VOLVER ATRÁS</button>
           <div className="flex justify-between items-start">
@@ -189,7 +189,7 @@ export default function GestionTardes() {
       </main>
 
       {/* DERECHA */}
-      <aside className="w-[30%] bg-gray-50/20 p-8 overflow-y-auto text-black">
+      <aside className="md:w-1/5 w-full bg-gray-50/20 p-6 md:p-8 overflow-y-auto text-black">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase font-black">CATÁLOGO ACTIVO ({gruposMostrados.length})</h3>
         <div className="space-y-4">
           {gruposMostrados.map((g) => (

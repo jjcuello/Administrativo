@@ -58,9 +58,9 @@ export default function GestionPersonal() {
     cargarDatos(); setSeleccionado(null)
   }
   return (
-    <div className="flex h-screen bg-white overflow-hidden -m-12 uppercase tracking-tight font-black text-black">
+    <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       {/* IZQUIERDA: ÁRBOL */}
-      <aside className="w-[20%] border-r border-gray-100 bg-gray-50/50 p-8 overflow-y-auto">
+      <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/50 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase flex items-center gap-2 font-black"><School size={12}/> Estructura</h3>
         <div className="space-y-3">
           {colegios.map(c => (
@@ -72,7 +72,7 @@ export default function GestionPersonal() {
       </aside>
 
       {/* CENTRO: GESTIÓN */}
-      <main className="w-[50%] p-12 overflow-y-auto border-r border-gray-100 bg-white">
+      <main className="md:w-3/5 w-full p-6 md:p-12 overflow-y-auto md:border-r border-gray-100 bg-white">
         <header className="mb-12 flex justify-between items-start">
           <div>
             <button onClick={() => router.back()} className="flex items-center gap-2 text-[10px] text-gray-400 hover:text-black mb-4 transition-all">
@@ -132,7 +132,7 @@ export default function GestionPersonal() {
           </form>
         )}
       </main>
-      <aside className="w-[30%] bg-gray-50/20 p-8 overflow-y-auto">
+      <aside className="md:w-1/5 w-full bg-gray-50/20 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase font-black">Nómina Registrada</h3>
         <div className="space-y-4">
           {listaPersonal.map((p) => (
