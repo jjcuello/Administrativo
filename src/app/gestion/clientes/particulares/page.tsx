@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { Save, Loader2, ArrowLeft, Crown, Monitor, MapPin, Building, Clock, Users, UserCheck, PlusCircle, Edit3, X, Zap } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -27,24 +28,38 @@ export default function GestionParticulares() {
   
   const [profesores, setProfesores] = useState<any[]>([])
   const [clases, setClases] = useState<Clase[]>([])
+  const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const nombreRef = useRef<HTMLInputElement | null>(null)
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (term?: string) => {
     // 1. Profesores activos
     const { data: prof } = await supabase.from('personal').select('id, nombres, apellidos').eq('estado', 'activo').order('apellidos')
     if (prof) setProfesores(prof)
-      
+    
     // 2. Clases VIP con datos del profesor
+    if (!term) {
+      const { data: cls } = await supabase.from('clases_particulares').select(`
+        *,
+        personal (nombres, apellidos)
+      `).order('nombre')
+      if (cls) setClases(cls)
+      return
+    }
+    const q = `%${term}%`
     const { data: cls } = await supabase.from('clases_particulares').select(`
       *,
       personal (nombres, apellidos)
-    `).order('nombre')
+    `)
+    .or(`nombre.ilike.${q},modalidad.ilike.${q}`)
+    .order('nombre')
     if (cls) setClases(cls)
   }
 
   useEffect(() => { (async () => { await cargarDatos() })() }, [])
+  const debounced = useDebounce(busqueda, 350)
+  useEffect(() => { (async () => { await cargarDatos(debounced) })() }, [debounced])
   const iniciarEdicion = () => {
     if (!seleccionado) return
     setFormData({ 
@@ -109,9 +124,13 @@ export default function GestionParticulares() {
     <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       {/* 1. IZQUIERDA: FILTRO */}
       <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/50 p-6 md:p-8 overflow-y-auto">
-        <button onClick={() => setFiltroModalidad(null)} className={`w-full text-left p-3 mb-4 rounded-2xl transition-all text-[10px] tracking-widest flex items-center gap-2 ${filtroModalidad === null ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-black'}`}>
+        <div className="mb-4">
+          <div className="relative mb-4">
+            <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar servicios VIP..." className="w-full pl-4 pr-3 py-3 rounded-2xl border border-gray-100 bg-white text-sm" />
+          </div>
+          <button onClick={() => setFiltroModalidad(null)} className={`w-full text-left p-3 rounded-2xl transition-all text-[10px] tracking-widest flex items-center gap-2 ${filtroModalidad === null ? 'bg-black text-white' : 'bg-gray-100 text-gray-400 hover:bg-gray-200 hover:text-black'}`}>
           <Crown size={12}/> TODAS LAS MODALIDADES
-        </button>
+        </div>
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-4 uppercase flex items-center gap-2"><Zap size={12}/> Filtrar Catálogo</h3>
         <div className="space-y-2">
           {['Virtual', 'A Domicilio', 'Sede Principal'].map(mod => (

@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { UserPlus, Edit3, UserMinus, Landmark, Smartphone, School, UserCheck, ChevronRight, ArrowLeft } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -16,17 +17,28 @@ export default function GestionPersonal() {
   })
   const [listaPersonal, setListaPersonal] = useState([])
   const [colegios, setColegios] = useState([])
+  const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
+  const debounced = useDebounce(busqueda, 350)
 
-  const cargarDatos = async () => {
-    const { data: pers } = await supabase.from('personal').select('*').order('estado', { ascending: true }).order('apellidos', { ascending: true })
-    if (pers) setListaPersonal(pers)
+  const cargarDatos = async (term?: string) => {
+    if (!term) {
+      const { data: pers } = await supabase.from('personal').select('*').order('estado', { ascending: true }).order('apellidos', { ascending: true })
+      if (pers) setListaPersonal(pers)
+    } else {
+      const q = `%${term}%`
+      const { data: pers } = await supabase.from('personal').select('*')
+        .or(`nombres.ilike.${q},apellidos.ilike.${q},cedula_numero.ilike.${q}`)
+        .order('estado', { ascending: true }).order('apellidos', { ascending: true })
+      if (pers) setListaPersonal(pers)
+    }
     const { data: col } = await supabase.from('colegios').select('id, nombre').order('nombre')
     if (col) setColegios(col)
   }
 
   useEffect(() => { (async () => { await cargarDatos() })() }, [])
+  useEffect(() => { (async () => { await cargarDatos(debounced) })() }, [debounced])
 
   const manejarSeleccion = (p: any) => { setSeleccionado(p); setVista('menu'); setMensaje('') }
 
@@ -79,6 +91,11 @@ export default function GestionPersonal() {
               <ArrowLeft size={14}/> VOLVER ATRÁS
             </button>
             <h1 className="text-3xl italic tracking-tighter uppercase font-black">{vista === 'menu' ? 'Gestión' : 'Ficha Personal'}</h1>
+            <div className="max-w-md mt-4">
+              <div className="relative">
+                <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar por nombre, apellido o cédula..." className="w-full pl-4 pr-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm" />
+              </div>
+            </div>
           </div>
           {vista !== 'menu' && <button onClick={() => setVista('menu')} className="text-[10px] text-gray-400 font-black hover:text-black border-b border-gray-100">CANCELAR</button>}
         </header>

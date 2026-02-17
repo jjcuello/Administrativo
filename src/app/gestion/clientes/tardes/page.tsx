@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { Save, Loader2, ArrowLeft, Trophy, MapPin, Users, Clock, PlusCircle, Edit3, X, Building } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -29,11 +30,13 @@ export default function GestionTardes() {
   const [sedes, setSedes] = useState<any[]>([])
   const [profesores, setProfesores] = useState<any[]>([])
   const [grupos, setGrupos] = useState<Grupo[]>([])
+  const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const nombreRef = useRef<HTMLInputElement | null>(null)
+  const debounced = useDebounce(busqueda, 350)
 
-  const cargarDatos = async () => {
+  const cargarDatos = async (term?: string) => {
     const { data: s } = await supabase.from('colegios').select('id, nombre').order('nombre')
     if (s) setSedes(s)
     
@@ -41,16 +44,28 @@ export default function GestionTardes() {
     if (p) setProfesores(p)
       
     // CONSULTA ULTRA-COMPATIBLE: Usamos la sintaxis de relación estándar de Supabase
-    const { data: g } = await supabase.from('grupos_tardes').select(`
+    if (!term) {
+      const { data: g } = await supabase.from('grupos_tardes').select(`
       *,
       colegios ( nombre ),
       personal ( nombres, apellidos )
     `).order('nombre')
-    
+      if (g) setGrupos(g)
+      return
+    }
+    const q = `%${term}%`
+    const { data: g } = await supabase.from('grupos_tardes').select(`
+      *,
+      colegios ( nombre ),
+      personal ( nombres, apellidos )
+    `)
+    .or(`nombre.ilike.${q},horario.ilike.${q}`)
+    .order('nombre')
     if (g) setGrupos(g)
   }
 
   useEffect(() => { (async () => { await cargarDatos() })() }, [])
+  useEffect(() => { (async () => { await cargarDatos(debounced) })() }, [debounced])
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault(); setCargando(true); setMensaje('')
@@ -140,6 +155,11 @@ export default function GestionTardes() {
                 {vista === 'editar' && (
                   <span className="ml-4 inline-block bg-yellow-400 text-black px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">EDITANDO{formData.nombre ? ' — ' + formData.nombre : ''}</span>
                 )}
+              </div>
+              <div className="max-w-md mt-4">
+                <div className="relative">
+                  <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar grupos por nombre, horario o sede..." className="w-full pl-4 pr-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm" />
+                </div>
               </div>
             </div>
             {vista !== 'menu' && <button onClick={() => setVista('menu')} className="text-[10px] text-gray-400 font-black hover:text-black border-b border-gray-100 uppercase">CANCELAR</button>}

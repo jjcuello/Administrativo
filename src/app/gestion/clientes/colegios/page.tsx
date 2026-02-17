@@ -1,5 +1,6 @@
  'use client'
 import { useState, useEffect, useRef } from 'react'
+import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { Save, School, Loader2, ArrowLeft, Building2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -24,16 +25,27 @@ export default function RegistroColegiosContratos() {
     cantidad_ninos: '', detalles_contrato: ''
   })
   const [lista, setLista] = useState<Colegio[]>([])
+  const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const [editId, setEditId] = useState<number | null>(null)
   const nombreRef = useRef<HTMLInputElement | null>(null)
 
-  const cargar = async () => {
-    const { data } = await supabase.from('colegios').select('*').order('nombre', { ascending: true })
+  const cargar = async (term?: string) => {
+    if (!term) {
+      const { data } = await supabase.from('colegios').select('*').order('nombre', { ascending: true })
+      if (data) setLista(data as Colegio[])
+      return
+    }
+    const q = `%${term}%`
+    const { data } = await supabase.from('colegios').select('*')
+      .or(`nombre.ilike.${q},rif.ilike.${q},contacto_nombre.ilike.${q},telefono.ilike.${q}`)
+      .order('nombre')
     if (data) setLista(data as Colegio[])
   }
   useEffect(() => { (async () => { await cargar() })() }, [])
+  const debounced = useDebounce(busqueda, 350)
+  useEffect(() => { (async () => { await cargar(debounced) })() }, [debounced])
   const seleccionarColegio = (c: Colegio) => {
     setFormData({
       nombre: c.nombre || '',
@@ -113,6 +125,11 @@ export default function RegistroColegiosContratos() {
             {editId && (
               <span className="ml-4 inline-block bg-yellow-400 text-black px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">EDITANDO{formData.nombre ? ' — ' + formData.nombre : ''}</span>
             )}
+          </div>
+          <div className="max-w-md mt-4">
+            <div className="relative">
+              <input value={busqueda} onChange={e => setBusqueda(e.target.value)} placeholder="Buscar colegios por nombre, rif, contacto o teléfono..." className="w-full pl-4 pr-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm" />
+            </div>
           </div>
           <p className="text-gray-400 text-sm font-medium italic tracking-normal">Defina la sede y los términos de negociación.</p>
         </header>

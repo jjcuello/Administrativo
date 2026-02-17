@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
+import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Users, Search, PlusCircle, User, Phone, Mail, Baby, Activity, CreditCard, X, CheckCircle2, Star } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -60,6 +61,20 @@ export default function GestionFamilias() {
   }
 
   useEffect(() => { (async () => { await cargarFamilias() })() }, [])
+
+  const debouncedBusqueda = useDebounce(busqueda, 350)
+  useEffect(() => {
+    const term = debouncedBusqueda.trim()
+    ;(async () => {
+      if (!term) { await cargarFamilias(); return }
+      const q = `%${term}%`
+      const { data } = await supabase.from('representantes')
+        .select('*, alumnos(*)')
+        .or(`nombres.ilike.${q},apellidos.ilike.${q},telefono.ilike.${q},email.ilike.${q},cedula_numero.ilike.${q}`)
+        .order('apellidos')
+      if (data) setFamilias(data as Representante[])
+    })()
+  }, [debouncedBusqueda])
 
   const seleccionarFamilia = (rep: Representante) => {
     setRepSeleccionado(rep)
