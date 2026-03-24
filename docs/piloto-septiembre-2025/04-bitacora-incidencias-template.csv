@@ -1,0 +1,6 @@
+id_incidencia,fecha_reporte,reportado_por,modulo,tabla_o_pantalla,tipo,severidad,descripcion,impacto,causa_probable,accion_correctiva,responsable_accion,fecha_compromiso,estado,fecha_cierre,evidencia
+INC-0001,2026-03-13,,Maestros,,Dato faltante,Media,,,,,,,Abierta,,
+INC-0002,2026-03-13,,Operaciones,,Diferencia contable,Alta,,,,,,,Abierta,,
+INC-0003,2026-03-13,,Conciliación,,Duplicado,Alta,,,,,,,Abierta,,
+INC-0004,2026-03-13,,Reportes,,Cálculo inconsistente,Alta,,,,,,,Abierta,,
+INC-0005,2026-03-13,,Operaciones,,Error de validación,Media,,,,,,,Abierta,,

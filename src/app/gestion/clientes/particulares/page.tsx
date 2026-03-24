@@ -2,19 +2,34 @@
 import { useState, useEffect, useRef } from 'react'
 import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
-import { Save, Loader2, ArrowLeft, Crown, Monitor, MapPin, Building, Clock, Users, UserCheck, PlusCircle, Edit3, X, Zap } from 'lucide-react'
+import { Loader2, ArrowLeft, Crown, Monitor, MapPin, Building, Users, UserCheck, PlusCircle, Edit3, Zap } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatUSD } from '@/lib/currency'
 
 type Clase = {
-  id?: number
+  id?: string
   nombre?: string
   modalidad?: string
-  profesor_id?: number | string
+  profesor_id?: string
   tarifa?: number
   tipo_cobro?: string
   estado?: string
   personal?: { nombres?: string; apellidos?: string }
 }
+
+type ClaseCatalogo = {
+  id?: string
+  nombre?: string
+  modalidad?: string
+  profesor_id?: string
+  tarifa?: number
+  tipo_cobro?: string
+  estado?: string
+  profesor_nombres?: string
+  profesor_apellidos?: string
+}
+
+type InscripcionVip = { clase_vip_id?: string }
 
 export default function GestionParticulares() {
   const router = useRouter()
@@ -26,45 +41,91 @@ export default function GestionParticulares() {
     nombre: '', modalidad: 'Virtual', profesor_id: '', tarifa: '', tipo_cobro: 'Por Hora'
   })
   
-  const [profesores, setProfesores] = useState<{id: number; nombres: string; apellidos: string}[]>([])
+  const [profesores, setProfesores] = useState<{id: string; nombres: string; apellidos: string}[]>([])
   const [clases, setClases] = useState<Clase[]>([])
+  const [inscritosPorClase, setInscritosPorClase] = useState<Record<string, number>>({})
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
+  const [errorCarga, setErrorCarga] = useState('')
   const nombreRef = useRef<HTMLInputElement | null>(null)
 
   const cargarDatos = async (term?: string) => {
+    setErrorCarga('')
     // 1. Profesores activos
-    const { data: prof } = await supabase.from('personal').select('id, nombres, apellidos').eq('estado', 'activo').order('apellidos')
+    const { data: prof, error: profErr } = await supabase.from('personal').select('id, nombres, apellidos').eq('estado', 'activo').order('apellidos')
+    if (profErr) setErrorCarga(profErr.message)
     if (prof) setProfesores(prof)
-    
+
     // 2. Clases VIP con datos del profesor
     if (!term) {
-      const { data: cls } = await supabase.from('clases_particulares').select(`
-        *,
-        personal (nombres, apellidos)
-      `).order('nombre')
-      if (cls) setClases(cls)
+      const { data: cls, error: clsErr } = await supabase.from('v_clases_particulares_catalogo').select('*').order('nombre')
+      if (clsErr) setErrorCarga(clsErr.message)
+      if (cls) {
+        const enriquecidas = (cls as ClaseCatalogo[]).map(item => ({
+          id: item.id,
+          nombre: item.nombre,
+          modalidad: item.modalidad,
+          profesor_id: item.profesor_id,
+          tarifa: item.tarifa,
+          tipo_cobro: item.tipo_cobro,
+          estado: item.estado,
+          personal: { nombres: item.profesor_nombres, apellidos: item.profesor_apellidos },
+        } as Clase))
+        setClases(enriquecidas)
+      }
       return
     }
     const q = `%${term}%`
-    const { data: cls } = await supabase.from('clases_particulares').select(`
-      *,
-      personal (nombres, apellidos)
-    `)
+    const { data: cls, error: clsErr } = await supabase.from('v_clases_particulares_catalogo').select('*')
     .or(`nombre.ilike.${q},modalidad.ilike.${q}`)
     .order('nombre')
-    if (cls) setClases(cls)
+    if (clsErr) setErrorCarga(clsErr.message)
+    if (cls) {
+      const enriquecidas = (cls as ClaseCatalogo[]).map(item => ({
+        id: item.id,
+        nombre: item.nombre,
+        modalidad: item.modalidad,
+        profesor_id: item.profesor_id,
+        tarifa: item.tarifa,
+        tipo_cobro: item.tipo_cobro,
+        estado: item.estado,
+        personal: { nombres: item.profesor_nombres, apellidos: item.profesor_apellidos },
+      } as Clase))
+      setClases(enriquecidas)
+    }
   }
 
-  useEffect(() => { (async () => { await cargarDatos() })() }, [])
+  const cargarInscripcionesVip = async () => {
+    const { data, error } = await supabase
+      .from('inscripciones')
+      .select('clase_vip_id')
+      .eq('estado', 'activa')
+
+    if (error) {
+      setErrorCarga(error.message)
+      return
+    }
+
+    const conteos: Record<string, number> = {}
+    for (const row of (data || []) as InscripcionVip[]) {
+      if (!row.clase_vip_id) continue
+      conteos[row.clase_vip_id] = (conteos[row.clase_vip_id] || 0) + 1
+    }
+    setInscritosPorClase(conteos)
+  }
+
+  useEffect(() => { (async () => { await cargarDatos(); await cargarInscripcionesVip() })() }, [])
   const debounced = useDebounce(busqueda, 350)
   useEffect(() => { (async () => { await cargarDatos(debounced) })() }, [debounced])
   const iniciarEdicion = () => {
     if (!seleccionado) return
-    setFormData({ 
-      ...seleccionado, 
-      tarifa: seleccionado.tarifa?.toString() || ''
+    setFormData({
+      nombre: seleccionado.nombre || '',
+      modalidad: seleccionado.modalidad || 'Virtual',
+      profesor_id: seleccionado.profesor_id || '',
+      tarifa: seleccionado.tarifa?.toString() || '',
+      tipo_cobro: seleccionado.tipo_cobro || 'Por Hora',
     })
     setVista('editar')
     setTimeout(() => nombreRef.current?.focus(), 200)
@@ -72,9 +133,12 @@ export default function GestionParticulares() {
 
   const seleccionarClase = (c: Clase) => {
     setSeleccionado(c)
-    setFormData({ 
-      ...c,
-      tarifa: c.tarifa?.toString() || ''
+    setFormData({
+      nombre: c.nombre || '',
+      modalidad: c.modalidad || 'Virtual',
+      profesor_id: c.profesor_id || '',
+      tarifa: c.tarifa?.toString() || '',
+      tipo_cobro: c.tipo_cobro || 'Por Hora',
     })
     setVista('editar')
     setMensaje('')
@@ -91,9 +155,22 @@ export default function GestionParticulares() {
 
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault(); setCargando(true)
-    const d = { 
-      ...formData, 
-      tarifa: parseFloat(formData.tarifa || '0')
+    if (!formData.nombre || !formData.modalidad || !formData.profesor_id || !formData.tarifa || !formData.tipo_cobro) {
+      setMensaje('❌ Completa todos los campos obligatorios')
+      setCargando(false)
+      return
+    }
+    if (Number(formData.tarifa) < 0) {
+      setMensaje('❌ La tarifa no puede ser negativa')
+      setCargando(false)
+      return
+    }
+    const d = {
+      nombre: formData.nombre,
+      modalidad: formData.modalidad,
+      profesor_id: formData.profesor_id || null,
+      tarifa: parseFloat(formData.tarifa || '0'),
+      tipo_cobro: formData.tipo_cobro,
     }
     
     const { error } = vista === 'editar' 
@@ -101,24 +178,51 @@ export default function GestionParticulares() {
       : await supabase.from('clases_particulares').insert([{ ...d, estado: 'activo' }])
 
     if (error) setMensaje('❌ ' + error.message)
-    else { setMensaje('✅ Servicio VIP guardado'); cargarDatos(); setTimeout(() => { setVista('menu'); setSeleccionado(null) }, 1000) }
+    else {
+      setMensaje('✅ Servicio VIP guardado')
+      await cargarDatos()
+      await cargarInscripcionesVip()
+      setTimeout(() => { setVista('menu'); setSeleccionado(null) }, 1000)
+    }
     setCargando(false)
   }
 
   const cambiarEstado = async (st: string) => {
     if (!seleccionado?.id) return
-    await supabase.from('clases_particulares').update({ estado: st }).eq('id', seleccionado.id)
-    cargarDatos(); setSeleccionado(null)
+    const { error } = await supabase.from('clases_particulares').update({ estado: st }).eq('id', seleccionado.id)
+    if (error) {
+      setMensaje('❌ ' + error.message)
+      return
+    }
+    setMensaje(st === 'activo' ? '✅ Servicio reactivado' : '✅ Servicio desactivado')
+    await cargarDatos()
+    await cargarInscripcionesVip()
+    setSeleccionado(null)
   }
 
   // Filtrar clases para la columna derecha
   const clasesMostradas = filtroModalidad ? clases.filter(c => c.modalidad === filtroModalidad) : clases
+  const totalInscritos = clasesMostradas.reduce((acc, c) => acc + (c.id ? (inscritosPorClase[c.id] || 0) : 0), 0)
+  const montoMensualTotal = clasesMostradas.reduce((acc, c) => acc + Number(c.tarifa || 0) * (c.id ? (inscritosPorClase[c.id] || 0) : 0), 0)
+  const resumenServicios = clasesMostradas
+    .map(c => {
+      const inscritos = c.id ? (inscritosPorClase[c.id] || 0) : 0
+      return {
+        id: c.id,
+        nombre: c.nombre || 'Servicio',
+        inscritos,
+        estimado: Number(c.tarifa || 0) * inscritos,
+      }
+    })
+    .filter(item => item.inscritos > 0)
+    .sort((a, b) => b.inscritos - a.inscritos)
 
-  const getIconoModalidad = (mod) => {
+  const getIconoModalidad = (mod?: string) => {
     if (mod === 'Virtual') return <Monitor size={14} className="inline mr-1"/>
     if (mod === 'A Domicilio') return <MapPin size={14} className="inline mr-1"/>
     return <Building size={14} className="inline mr-1"/>
   }
+  const formatearMonto = formatUSD
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
@@ -133,6 +237,17 @@ export default function GestionParticulares() {
           </button>
         </div>
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-4 uppercase flex items-center gap-2"><Zap size={12}/> Filtrar Catálogo</h3>
+        <div className="space-y-2 mb-4 text-[10px]">
+          <div className="bg-white border border-gray-100 rounded-2xl p-3">
+            <p className="text-gray-400 mb-1">Inscritos activos</p>
+            <p className="text-black text-lg">{totalInscritos}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-3">
+            <p className="text-gray-400 mb-1">Monto mensual total</p>
+            <p className="text-black text-lg">${formatearMonto(montoMensualTotal)}</p>
+          </div>
+          {errorCarga && <p className="text-[10px] p-3 bg-red-50 text-red-700 rounded-2xl">❌ {errorCarga}</p>}
+        </div>
         <div className="space-y-2">
           {['Virtual', 'A Domicilio', 'Sede Principal'].map(mod => (
             <button key={mod} onClick={() => setFiltroModalidad(mod)} 
@@ -177,6 +292,26 @@ export default function GestionParticulares() {
               className={`flex items-center gap-6 p-8 rounded-[2.5rem] border transition-all text-left font-black ${seleccionado ? (seleccionado.estado === 'activo' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-green-50 border-green-200 text-green-600') : 'opacity-30'}`}>
               <UserCheck size={28}/> <p className="text-xl italic">{seleccionado?.estado === 'activo' ? '3. Desactivar Servicio' : '3. Reactivar Servicio'}</p>
             </button>
+            <div className="bg-white border border-gray-100 rounded-[2.5rem] p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-[10px] text-gray-400 tracking-widest uppercase">Inscripciones activas</p>
+                <span className="text-[10px] font-black uppercase text-black">{totalInscritos}</span>
+              </div>
+              <div className="space-y-2 max-h-72 overflow-y-auto">
+                {resumenServicios.map(item => (
+                  <div key={item.id || item.nombre} className="p-3 rounded-2xl border border-gray-100 bg-gray-50 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-black uppercase text-black">{item.nombre}</p>
+                      <p className="text-[9px] text-gray-400 uppercase tracking-widest">{item.inscritos} inscritos</p>
+                    </div>
+                    <p className="text-[11px] font-black italic text-black">${formatearMonto(item.estimado)}</p>
+                  </div>
+                ))}
+                {resumenServicios.length === 0 && (
+                  <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest text-center p-6">Sin inscripciones activas</p>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <form onSubmit={guardar} className="space-y-6 max-w-xl mx-auto pb-10">
@@ -234,7 +369,7 @@ export default function GestionParticulares() {
               <div className="flex justify-between items-start mb-3">
                 <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">{getIconoModalidad(c.modalidad)} {c.modalidad}</p>
                 <div className="text-right">
-                  <span className="text-xl italic font-black text-black block">${c.tarifa}</span>
+                  <span className="text-xl italic font-black text-black block">${formatearMonto(c.tarifa)}</span>
                   <span className="text-[8px] bg-gray-100 px-2 py-0.5 rounded text-gray-500 uppercase">{c.tipo_cobro}</span>
                 </div>
               </div>
@@ -244,6 +379,7 @@ export default function GestionParticulares() {
               <div className="border-t border-gray-50 pt-3">
                 <p className="text-[8px] text-gray-400 uppercase tracking-widest mb-0.5">Talento Asignado</p>
                 <p className="text-[11px] font-black uppercase"><Crown size={10} className="inline mr-1 text-yellow-500"/> {c.personal?.apellidos} {c.personal?.nombres}</p>
+                <p className="text-[9px] text-gray-500 uppercase tracking-widest mt-2"><Users size={10} className="inline mr-1"/> {c.id ? (inscritosPorClase[c.id] || 0) : 0} inscritos</p>
               </div>
 
             </div>

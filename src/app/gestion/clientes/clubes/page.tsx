@@ -4,9 +4,11 @@ import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { Save, Loader2, ArrowLeft, Landmark, Building, Phone, Hash } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatUSD } from '@/lib/currency'
 
 type Club = {
-  id?: number
+  id?: string
+  tipo?: string
   nombre?: string
   rif?: string
   contacto_nombre?: string
@@ -25,19 +27,33 @@ export default function RegistroClubes() {
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
-  const [editId, setEditId] = useState<number | null>(null)
+  const [errorCarga, setErrorCarga] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
   const nombreRef = useRef<HTMLInputElement | null>(null)
 
+  const limpiarFormulario = () => {
+    setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', detalles_contrato: '' })
+  }
+
   const cargar = async (term?: string) => {
+    setErrorCarga('')
     if (!term) {
-      const { data } = await supabase.from('colegios').select('*').eq('tipo', 'club').order('nombre', { ascending: true })
+      const { data, error } = await supabase.from('colegios').select('*').eq('tipo', 'club').order('nombre', { ascending: true })
+      if (error) {
+        setErrorCarga(error.message)
+        return
+      }
       if (data) setLista(data as Club[])
       return
     }
     const q = `%${term}%`
-    const { data } = await supabase.from('colegios').select('*').eq('tipo', 'club')
+    const { data, error } = await supabase.from('colegios').select('*').eq('tipo', 'club')
       .or(`nombre.ilike.${q},rif.ilike.${q},contacto_nombre.ilike.${q},telefono.ilike.${q}`)
       .order('nombre')
+    if (error) {
+      setErrorCarga(error.message)
+      return
+    }
     if (data) setLista(data as Club[])
   }
   useEffect(() => { (async () => { await cargar() })() }, [])
@@ -53,7 +69,7 @@ export default function RegistroClubes() {
       monto_fijo_mensual: c.monto_fijo_mensual ? String(c.monto_fijo_mensual) : '',
       detalles_contrato: c.detalles_contrato || ''
     })
-    setEditId(c.id)
+    setEditId(c.id ?? null)
     setMensaje('')
     // scroll to top of form area (main) if needed
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -64,7 +80,9 @@ export default function RegistroClubes() {
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.nombre) { setMensaje('❌ El nombre es obligatorio'); return; }
+    if (Number(formData.monto_fijo_mensual || 0) < 0) { setMensaje('❌ El monto no puede ser negativo'); return }
     setCargando(true)
+    setMensaje('')
     if (editId) {
       const { error } = await supabase.from('colegios').update({
         nombre: formData.nombre,
@@ -72,12 +90,13 @@ export default function RegistroClubes() {
         contacto_nombre: formData.contacto_nombre,
         telefono: formData.telefono,
         monto_fijo_mensual: parseFloat(formData.monto_fijo_mensual || '0'),
+        tipo: 'club',
         detalles_contrato: formData.detalles_contrato
       }).eq('id', editId)
       if (error) setMensaje('❌ ' + error.message)
       else {
         setMensaje('✅ Club actualizado con éxito')
-        setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', detalles_contrato: '' })
+        limpiarFormulario()
         setEditId(null)
         cargar()
       }
@@ -95,7 +114,7 @@ export default function RegistroClubes() {
       if (error) setMensaje('❌ ' + error.message)
       else {
         setMensaje('✅ Club registrado con éxito')
-        setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', detalles_contrato: '' })
+        limpiarFormulario()
         cargar()
       }
     }
@@ -104,16 +123,29 @@ export default function RegistroClubes() {
 
   const cancelarEdicion = () => {
     setEditId(null)
-    setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', detalles_contrato: '' })
+    limpiarFormulario()
     setMensaje('')
     nombreRef.current?.blur()
   }
+
+  const totalMensual = lista.reduce((acc, item) => acc + Number(item.monto_fijo_mensual || 0), 0)
+  const formatearMonto = formatUSD
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/30 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase font-black"><Landmark size={12} className="inline mr-2"/> Estructura B2B</h3>
-        <p className="text-[10px] italic text-gray-400 font-medium lowercase">Directorio de clubes asociados...</p>
+        <div className="space-y-3 text-[10px]">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Clubes activos</p>
+            <p className="text-lg font-black text-black">{lista.length}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Base mensual total</p>
+            <p className="text-lg font-black text-black">${formatearMonto(totalMensual)}</p>
+          </div>
+          {errorCarga && <p className="text-[10px] p-3 bg-red-50 text-red-700 rounded-2xl">❌ {errorCarga}</p>}
+        </div>
       </aside>
 
       <main className="md:w-3/5 w-full p-6 md:p-12 overflow-y-auto md:border-r border-gray-100 bg-white">
@@ -140,7 +172,7 @@ export default function RegistroClubes() {
         <form onSubmit={guardar} className="space-y-6 max-w-xl mx-auto pb-10">
           <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-xl space-y-4 text-black">
             
-            <input required placeholder="NOMBRE DEL CLUB (Ej: Valle Arriba)" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+            <input ref={nombreRef} required placeholder="NOMBRE DEL CLUB (Ej: Valle Arriba)" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
             
             <div className="grid grid-cols-2 gap-4">
               <input placeholder="RIF DEL CLUB" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.rif} onChange={e => setFormData({...formData, rif: e.target.value})} />
@@ -166,7 +198,7 @@ export default function RegistroClubes() {
               <button type="button" onClick={cancelarEdicion} className="w-36 bg-white text-black py-5 rounded-2xl font-black italic border border-gray-200 hover:bg-gray-100 transition-all">CANCELAR EDICIÓN</button>
             )}
           </div>
-          {mensaje && <p className="text-center text-[10px] p-4 bg-green-50 text-green-700 rounded-2xl font-black">{mensaje}</p>}
+          {mensaje && <p className={`text-center text-[10px] p-4 rounded-2xl font-black ${mensaje.startsWith('❌') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{mensaje}</p>}
         </form>
       </main>
 
@@ -189,7 +221,7 @@ export default function RegistroClubes() {
                 </div>
                 <div className="text-right">
                   <p className="text-[8px] text-gray-400 uppercase tracking-widest mb-0.5">Base Referencial</p>
-                  <span className="text-xl italic tracking-tighter font-black text-black">${c.monto_fijo_mensual}</span>
+                  <span className="text-xl italic tracking-tighter font-black text-black">${formatearMonto(c.monto_fijo_mensual)}</span>
                 </div>
               </div>
             </div>

@@ -4,10 +4,12 @@ import useDebounce from '@/lib/useDebounce'
 import { useRouter } from 'next/navigation'
 import { Save, School, Loader2, ArrowLeft, Building2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { formatUSD } from '@/lib/currency'
 
 type Colegio = {
-  id?: number
+  id?: string
   nombre?: string
+  tipo?: string
   rif?: string
   contacto_nombre?: string
   telefono?: string
@@ -28,20 +30,34 @@ export default function RegistroColegiosContratos() {
   const [busqueda, setBusqueda] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
-  const [editId, setEditId] = useState<number | null>(null)
+  const [errorCarga, setErrorCarga] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
   const nombreRef = useRef<HTMLInputElement | null>(null)
 
+  const limpiarFormulario = () => {
+    setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', modalidad_pago: 'mensual', cantidad_ninos: '', detalles_contrato: '' })
+  }
+
   const cargar = async (term?: string) => {
+    setErrorCarga('')
     if (!term) {
-      const { data } = await supabase.from('colegios').select('*').order('nombre', { ascending: true })
-      if (data) setLista(data as Colegio[])
+      const { data, error } = await supabase.from('colegios').select('*').order('nombre', { ascending: true })
+      if (error) {
+        setErrorCarga(error.message)
+        return
+      }
+      if (data) setLista((data as Colegio[]).filter(c => (c.tipo || 'colegio') !== 'club'))
       return
     }
     const q = `%${term}%`
-    const { data } = await supabase.from('colegios').select('*')
+    const { data, error } = await supabase.from('colegios').select('*')
       .or(`nombre.ilike.${q},rif.ilike.${q},contacto_nombre.ilike.${q},telefono.ilike.${q}`)
       .order('nombre')
-    if (data) setLista(data as Colegio[])
+    if (error) {
+      setErrorCarga(error.message)
+      return
+    }
+    if (data) setLista((data as Colegio[]).filter(c => (c.tipo || 'colegio') !== 'club'))
   }
   useEffect(() => { (async () => { await cargar() })() }, [])
   const debounced = useDebounce(busqueda, 350)
@@ -65,34 +81,43 @@ export default function RegistroColegiosContratos() {
   const guardar = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formData.nombre) { setMensaje('❌ El nombre es obligatorio'); return; }
+    if (Number(formData.monto_fijo_mensual || 0) < 0) { setMensaje('❌ El monto no puede ser negativo'); return }
     setCargando(true)
+    setMensaje('')
     if (editId) {
       const { error } = await supabase.from('colegios').update({
         nombre: formData.nombre,
+        rif: formData.rif,
+        contacto_nombre: formData.contacto_nombre,
+        telefono: formData.telefono,
         monto_fijo_mensual: parseFloat(formData.monto_fijo_mensual || '0'),
         modalidad_pago: formData.modalidad_pago,
-        cantidad_ninos: parseInt(formData.cantidad_ninos || '0'),
+        cantidad_ninos: formData.cantidad_ninos ? parseInt(formData.cantidad_ninos, 10) : 0,
         detalles_contrato: formData.detalles_contrato
       }).eq('id', editId)
       if (error) setMensaje('❌ ' + error.message)
       else {
         setMensaje('✅ Colegio actualizado con éxito')
-        setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', modalidad_pago: 'mensual', cantidad_ninos: '', detalles_contrato: '' })
+        limpiarFormulario()
         setEditId(null)
         cargar()
       }
     } else {
       const { error } = await supabase.from('colegios').insert([{
         nombre: formData.nombre,
+        rif: formData.rif,
+        contacto_nombre: formData.contacto_nombre,
+        telefono: formData.telefono,
         monto_fijo_mensual: parseFloat(formData.monto_fijo_mensual || '0'),
         modalidad_pago: formData.modalidad_pago,
-        cantidad_ninos: parseInt(formData.cantidad_ninos || '0'),
+        cantidad_ninos: formData.cantidad_ninos ? parseInt(formData.cantidad_ninos, 10) : 0,
+        tipo: 'colegio',
         detalles_contrato: formData.detalles_contrato
       }])
       if (error) setMensaje('❌ ' + error.message)
       else {
         setMensaje('✅ Contrato registrado con éxito')
-        setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', modalidad_pago: 'mensual', cantidad_ninos: '', detalles_contrato: '' })
+        limpiarFormulario()
         cargar()
       }
     }
@@ -101,16 +126,34 @@ export default function RegistroColegiosContratos() {
 
   const cancelarEdicion = () => {
     setEditId(null)
-    setFormData({ nombre: '', rif: '', contacto_nombre: '', telefono: '', monto_fijo_mensual: '', modalidad_pago: 'mensual', cantidad_ninos: '', detalles_contrato: '' })
+    limpiarFormulario()
     setMensaje('')
     nombreRef.current?.blur()
   }
+
+  const totalMensual = lista.reduce((acc, item) => acc + Number(item.monto_fijo_mensual || 0), 0)
+  const totalNinos = lista.reduce((acc, item) => acc + Number(item.cantidad_ninos || 0), 0)
+  const formatearMonto = formatUSD
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-white overflow-hidden uppercase tracking-tight font-black text-black">
       <aside className="md:w-1/5 w-full md:border-r border-b md:border-b-0 border-gray-100 bg-gray-50/30 p-6 md:p-8 overflow-y-auto">
         <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 uppercase">Estructura</h3>
-        <p className="text-[10px] italic text-gray-400 font-medium lowercase">Vista de sedes activas...</p>
+        <div className="space-y-3 text-[10px]">
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Sedes activas</p>
+            <p className="text-lg font-black text-black">{lista.length}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Niños registrados</p>
+            <p className="text-lg font-black text-black">{totalNinos}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Monto mensual total</p>
+            <p className="text-lg font-black text-black">${formatearMonto(totalMensual)}</p>
+          </div>
+          {errorCarga && <p className="text-[10px] p-3 bg-red-50 text-red-700 rounded-2xl">❌ {errorCarga}</p>}
+        </div>
       </aside>
       <main className="md:w-3/5 w-full p-6 md:p-12 overflow-y-auto md:border-r border-gray-100 bg-white">
         <header className="mb-10 text-black">
@@ -138,6 +181,11 @@ export default function RegistroColegiosContratos() {
           <div className="bg-white rounded-[2.5rem] p-8 border border-gray-100 shadow-xl space-y-4 text-black">
             <input ref={nombreRef} required placeholder="NOMBRE DE LA INSTITUCIÓN" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
             <div className="grid grid-cols-2 gap-4">
+              <input placeholder="RIF" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.rif} onChange={e => setFormData({...formData, rif: e.target.value})} />
+              <input placeholder="TELÉFONO" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.telefono} onChange={e => setFormData({...formData, telefono: e.target.value})} />
+            </div>
+            <input placeholder="PERSONA DE CONTACTO" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.contacto_nombre} onChange={e => setFormData({...formData, contacto_nombre: e.target.value})} />
+            <div className="grid grid-cols-2 gap-4">
               <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.modalidad_pago} onChange={e => setFormData({...formData, modalidad_pago: e.target.value})}>
                 <option value="mensual">Mensual</option>
                 <option value="trimestral">Trimestral</option>
@@ -159,7 +207,7 @@ export default function RegistroColegiosContratos() {
               <button type="button" onClick={cancelarEdicion} className="w-36 bg-white text-black py-5 rounded-2xl font-black italic border border-gray-200 hover:bg-gray-100 transition-all">CANCELAR EDICIÓN</button>
             )}
           </div>
-          {mensaje && <p className="text-center text-[10px] p-4 bg-green-50 text-green-700 rounded-2xl">{mensaje}</p>}
+          {mensaje && <p className={`text-center text-[10px] p-4 rounded-2xl ${mensaje.startsWith('❌') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>{mensaje}</p>}
         </form>
       </main>
 
@@ -175,7 +223,7 @@ export default function RegistroColegiosContratos() {
               <p className="text-[9px] italic mb-4 line-clamp-2">{c.detalles_contrato}</p>
               <div className="mt-4 flex justify-between items-end border-t border-gray-50 pt-3">
                 <span className="text-[10px] font-bold text-gray-400">{c.cantidad_ninos} NIÑOS</span>
-                <span className="text-xl italic tracking-tighter font-black">${c.monto_fijo_mensual}</span>
+                <span className="text-xl italic tracking-tighter font-black">${formatearMonto(c.monto_fijo_mensual)}</span>
               </div>
             </div>
           ))}
