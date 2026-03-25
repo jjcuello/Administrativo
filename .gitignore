@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local backups / temporary exports
+mi_respaldo.sql
+tmp-lint.exit
+tmp_supabase_snippet.csv
+Supabase Snippet Resumen de presupuestos y cobros de socios.csv
