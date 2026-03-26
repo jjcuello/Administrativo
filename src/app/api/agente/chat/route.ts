@@ -66,7 +66,7 @@ const extractPersonTerms = (message: string) => {
 const messageLooksPersonalReference = (message: string) => {
   const text = normalizeText(message)
   const hasPossessivePronounRef = /\b(su|sus)\b/.test(text)
-  const hasDirectPronounRef = /\b(ella|ellas|ello|ellos)\b/.test(text) || /\by\s+el\b/.test(text)
+  const hasDirectPronounRef = /\b(ella|ellas|ello|ellos|el|la|le|les)\b/.test(text) || /\by\s+el\b/.test(text)
   const hasPronounRef = hasPossessivePronounRef || hasDirectPronounRef
   const asksPersonalData = hasAny(text, [
     'sueldo',
@@ -81,6 +81,26 @@ const messageLooksPersonalReference = (message: string) => {
   ])
 
   return hasPronounRef && asksPersonalData
+}
+
+const messageNeedsPersonalContext = (message: string) => {
+  const text = normalizeText(message)
+  const explicitTerms = extractPersonTerms(message)
+  if (explicitTerms.length > 0) return false
+
+  return hasAny(text, [
+    'pago movil',
+    'datos bancarios',
+    'cuenta bancaria',
+    'banco',
+    'sueldo',
+    'salario',
+    'nomina',
+    'cuanto gana',
+    'cuanto cobra',
+    'pagarle',
+    'pagarle a',
+  ])
 }
 
 const messageLooksNameClarification = (message: string) => {
@@ -133,8 +153,9 @@ const fetchRecentConversationUserMessages = async (conversationId: string, userI
 const contextualizePersonalReference = async (message: string, conversationId: string, userId: string) => {
   const looksPronounReference = messageLooksPersonalReference(message)
   const looksNameClarification = messageLooksNameClarification(message)
+  const needsPersonalContext = messageNeedsPersonalContext(message)
 
-  if (!looksPronounReference && !looksNameClarification) {
+  if (!looksPronounReference && !looksNameClarification && !needsPersonalContext) {
     return {
       resolvedMessage: message,
       resolvedTerms: [] as string[],
