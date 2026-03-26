@@ -746,7 +746,7 @@ export default function GestionNominaPage() {
 
     const { data: nominasPreviasData, error: nominasPreviasError } = await supabase
       .from('nominas_mensuales')
-      .select('id')
+      .select('id, periodo_ym')
       .is('deleted_at', null)
       .lt('periodo_ym', periodo)
 
@@ -757,7 +757,13 @@ export default function GestionNominaPage() {
       }
     }
 
-    const nominaIds = ((nominasPreviasData as Array<{ id: string }> | null) ?? []).map((row) => row.id)
+    const nominasPrevias = (nominasPreviasData as Array<{ id: string; periodo_ym?: string | null }> | null) ?? []
+    const nominaIds = nominasPrevias.map((row) => row.id)
+    const periodosConNominaPrevia = new Set(
+      nominasPrevias
+        .map((row) => (row.periodo_ym || '').trim())
+        .filter((periodoYm) => PERIODO_REGEX.test(periodoYm))
+    )
     const obligacionesPrevias: Record<string, number> = {}
 
     if (nominaIds.length > 0) {
@@ -884,6 +890,14 @@ export default function GestionNominaPage() {
           categoriaNombre,
         })
       } else {
+        // If a payment references a prior period with no saved nomina, we cannot
+        // reliably decide whether it is debt settlement or true advance. Do not
+        // carry it into current-month saldo to avoid false "pagado" states.
+        if (!periodosConNominaPrevia.has(periodoPago)) {
+          warnings.push(`Se ignoró arrastre de pago imputado a ${periodoPago} porque no existe nómina consolidada para ese período.`)
+          continue
+        }
+
         pagosPrevios[personalId] = roundMoney((pagosPrevios[personalId] || 0) + monto)
       }
     }
