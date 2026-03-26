@@ -83,6 +83,24 @@ const messageLooksPersonalReference = (message: string) => {
   return hasPronounRef && asksPersonalData
 }
 
+const messageLooksNameClarification = (message: string) => {
+  const text = normalizeText(message)
+  const hasPersonTerms = extractPersonTerms(message).length > 0
+  const asksExistence = hasAny(text, [
+    'se llama',
+    'lo tienes',
+    'la tienes',
+    'esta en la base de datos',
+    'esta en base de datos',
+    'en la base de datos',
+    'aparece en la base',
+    'existe en la base',
+    'lo tienes en la base',
+  ])
+
+  return hasPersonTerms && asksExistence
+}
+
 const fetchRecentConversationUserMessages = async (conversationId: string, userId: string) => {
   const supabase = getSupabaseServiceClient()
   if (!supabase) return [] as string[]
@@ -113,7 +131,10 @@ const fetchRecentConversationUserMessages = async (conversationId: string, userI
 }
 
 const contextualizePersonalReference = async (message: string, conversationId: string, userId: string) => {
-  if (!messageLooksPersonalReference(message)) {
+  const looksPronounReference = messageLooksPersonalReference(message)
+  const looksNameClarification = messageLooksNameClarification(message)
+
+  if (!looksPronounReference && !looksNameClarification) {
     return {
       resolvedMessage: message,
       resolvedTerms: [] as string[],
@@ -121,7 +142,7 @@ const contextualizePersonalReference = async (message: string, conversationId: s
   }
 
   const explicitTerms = extractPersonTerms(message)
-  if (explicitTerms.length > 0) {
+  if (explicitTerms.length > 0 && !looksNameClarification) {
     return {
       resolvedMessage: message,
       resolvedTerms: explicitTerms,
@@ -146,11 +167,9 @@ const contextualizePersonalReference = async (message: string, conversationId: s
     if (!looksPersonal) continue
 
     const previousTerms = extractPersonTerms(previous)
-    if (previousTerms.length === 0) continue
-
     return {
-      resolvedMessage: `${message} de ${previousTerms.join(' ')}`,
-      resolvedTerms: previousTerms,
+      resolvedMessage: `${previous} ${message}`,
+      resolvedTerms: explicitTerms.length > 0 ? explicitTerms : previousTerms,
     }
   }
 
