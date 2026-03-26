@@ -1,0 +1,175 @@
+Remote Server Runbook - academia-ana
+Fecha: 2026-03-26
+
+Objetivo
+- Ejecutar la app en una maquina remota y continuar desarrollo por SSH.
+
+Datos del servidor
+- Host/IP: 192.168.88.132
+- Puerto SSH: 2468
+- Usuario SSH: jcuello
+- Alias SSH local: academia-remote
+- SO remoto detectado: Fedora Linux 42 (Server Edition)
+
+Estado actual (ultima validacion)
+- Node: v22.22.0
+- npm: 10.9.4
+- PM2: 6.0.14
+- App en PM2 (modo desarrollo): academia-ana-dev
+- Healthcheck local remoto: HTTP 200 en puerto 3000
+- Acceso SSH por llave: ACTIVO
+- Login por password SSH: DESACTIVADO
+- Usuarios permitidos por SSH: jcuello y root
+- Root login en SSH: HABILITADO (solo llave, no password)
+
+Repositorio
+- Repo: https://github.com/jjcuello/Administrativo.git
+- Rama: main
+- Commit de fix de build (tipado): 93c2ef2
+
+Notas importantes
+- Se intento levantar en modo produccion (next build + next start), pero hubo fallos intermitentes durante build en la sesion remota.
+- Para no bloquear avance, se dejo corriendo en modo desarrollo con PM2: npm run dev.
+- Evita guardar passwords en texto plano. Usa variables de entorno o prompt interactivo.
+
+==============================
+COMANDOS BASE (LOCAL)
+==============================
+
+1) Conectarte por SSH
+ssh -p 2468 jcuello@192.168.88.132
+
+1.1) Conectarte por alias (recomendado)
+ssh academia-remote
+
+2) Verificar puerto SSH desde local
+nc -zv 192.168.88.132 2468
+
+3) Sincronizar codigo al remoto (sin .git, node_modules ni .next)
+rsync -az --delete \
+  --exclude node_modules \
+  --exclude .next \
+  --exclude .git \
+  --exclude '*.log' \
+  -e "ssh -p 2468 -o StrictHostKeyChecking=accept-new" \
+  ./ jcuello@192.168.88.132:~/academia-ana/
+
+==============================
+COMANDOS DE SETUP (REMOTO)
+==============================
+
+4) Instalar runtime (Node/npm)
+sudo dnf -y install nodejs npm
+
+5) Instalar PM2 global
+sudo npm install -g pm2
+
+6) Verificar versiones
+node -v
+npm -v
+pm2 -v
+
+==============================
+EJECUCION APP EN REMOTO
+==============================
+
+A) Modo desarrollo (actualmente activo)
+cd ~/academia-ana
+pm2 delete academia-ana-dev || true
+PORT=3000 pm2 start npm --name academia-ana-dev -- run dev
+pm2 save
+pm2 status academia-ana-dev --no-color
+
+B) Modo produccion (cuando build pase estable)
+cd ~/academia-ana
+npm ci
+npm run build
+pm2 delete academia-ana || true
+PORT=3000 pm2 start npm --name academia-ana -- start
+pm2 save
+pm2 status academia-ana --no-color
+
+==============================
+OPERACION DIARIA PM2
+==============================
+
+Ver estado
+pm2 status
+
+Ver logs (dev)
+pm2 logs academia-ana-dev
+
+Ver logs (prod)
+pm2 logs academia-ana
+
+Reiniciar (dev)
+pm2 restart academia-ana-dev
+
+Reiniciar (prod)
+pm2 restart academia-ana
+
+Eliminar proceso
+pm2 delete academia-ana-dev
+pm2 delete academia-ana
+
+Persistencia al reinicio del sistema
+pm2 save
+pm2 startup
+# ejecutar el comando que PM2 imprime al final (con sudo)
+
+==============================
+HEALTHCHECKS
+==============================
+
+Check local remoto puerto 3000
+curl --max-time 5 -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000
+
+Ver puerto escuchando
+ss -ltnp | grep -E ':3000\b' || true
+
+==============================
+SSH HARDENING APLICADO
+==============================
+
+Archivo aplicado en servidor
+/etc/ssh/sshd_config.d/98-allow-users.conf
+
+Contenido
+AllowUsers jcuello root
+
+Archivo aplicado en servidor
+/etc/ssh/sshd_config.d/99-disable-password-auth.conf
+
+Contenido
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+
+Validaciones realizadas
+- permitrootlogin yes
+- pubkeyauthentication yes
+- passwordauthentication no
+- kbdinteractiveauthentication no
+- allowusers jcuello
+- allowusers root
+
+==============================
+TRAZA DE CAMBIOS RELEVANTES
+==============================
+
+- Se corrigio un error de TypeScript en:
+  src/app/gestion/personal/page.tsx (uso de getErrorText(error) en lugar de error.message)
+- Commit publicado:
+  93c2ef2 Fix personal page error typing for production build
+
+==============================
+SUGERENCIA DE SIGUIENTE PASO
+==============================
+
+- Usar VS Code Remote SSH apuntando a:
+  Host 192.168.88.132
+  Port 2468
+  User jcuello
+
+- Si se pierde este equipo local, conservar un segundo acceso por llave para root en un dispositivo de contingencia.
