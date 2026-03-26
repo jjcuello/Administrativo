@@ -374,8 +374,18 @@ export default function GestionPersonal() {
         .in('id', ids)
 
       if (personalErr) {
-        console.error('Error cargando detalle de personal por sede', { sedeId, personalErr })
-        setErrorCarga('No se pudo obtener personal asignado para la sede seleccionada')
+        // Some environments still lack personal.deleted_at; fallback without that column.
+        const { data: personalRowsFallback, error: personalFallbackErr } = await supabase
+          .from('personal')
+          .select('id, nombres, apellidos, cargo, estado')
+          .in('id', ids)
+
+        if (personalFallbackErr) {
+          console.error('Error cargando detalle de personal por sede', { sedeId, error: getErrorText(personalFallbackErr), raw: personalFallbackErr })
+          setErrorCarga('No se pudo obtener personal asignado para la sede seleccionada')
+        } else {
+          acumulado = ((personalRowsFallback || []) as PersonalAsignado[]).map(item => ({ ...item, deleted_at: null }))
+        }
       } else {
         acumulado = (personalRows || []) as PersonalAsignado[]
       }
