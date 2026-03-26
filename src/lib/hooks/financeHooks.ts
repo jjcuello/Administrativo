@@ -14,6 +14,7 @@ type CategoriaIngresoMeta = { id: string; nombre: string }
 type CategoriaEgresoMeta = { id: string; nombre: string }
 type CuentaMeta = { id: string; nombre: string }
 type AlumnoMeta = { id: string; nombres?: string; apellidos?: string }
+type ColegioMeta = { id: string; nombre?: string; tipo?: string | null }
 type ProveedorMeta = { id: string; nombre_comercial?: string }
 type ProfesorMeta = { id: string; nombres?: string; apellidos?: string; cargo?: string }
 type CategoriaIngresoSeed = { nombre: string; descripcion: string }
@@ -253,6 +254,7 @@ export function useIngresosMetadata() {
   const [categorias, setCategorias] = useState<CategoriaIngresoMeta[]>([])
   const [cuentas, setCuentas] = useState<CuentaMeta[]>([])
   const [alumnos, setAlumnos] = useState<AlumnoMeta[]>([])
+  const [colegios, setColegios] = useState<ColegioMeta[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<HookError>(null)
 
@@ -299,6 +301,15 @@ export function useIngresosMetadata() {
     if (alumErr && !nextError) nextError = alumErr
     if (alums) setAlumnos(alums as AlumnoMeta[])
 
+    const { data: cols, error: colErr } = await supabase
+      .from('colegios')
+      .select('id, nombre, tipo')
+      .order('nombre')
+    if (colErr && !nextError) nextError = colErr
+    if (cols) {
+      setColegios((cols as ColegioMeta[]).filter((colegio) => (colegio.tipo || 'colegio') !== 'club'))
+    }
+
     setError(nextError)
     setLoading(false)
   }, [])
@@ -311,7 +322,7 @@ export function useIngresosMetadata() {
     return () => clearTimeout(timer)
   }, [fetch])
 
-  return { categorias, cuentas, alumnos, loading, error, refresh: fetch }
+  return { categorias, cuentas, alumnos, colegios, loading, error, refresh: fetch }
 }
 
 export function useListEgresos(periodoEscolarId?: string | null, enabled = true) {

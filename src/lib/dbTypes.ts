@@ -26,6 +26,7 @@ export interface Ingresos {
   estado?: string | null
   categoria_id?: string | null
   alumno_id?: string | null
+  colegio_id?: string | null
   cuenta_destino_id?: string | null
   transaccion_id?: string | null
   periodo_id?: string | null

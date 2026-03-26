@@ -18,6 +18,7 @@ type Ingreso = {
   estado?: string
   categoria_id?: string | null
   alumno_id?: string | null
+  colegio_id?: string | null
   cuenta_destino_id?: string | null
 }
 
@@ -33,12 +34,15 @@ const getPeriodoEtiqueta = (periodo?: Partial<PeriodoOption> | null) => (
 )
 
 const CATEGORIAS_CON_ALUMNO = new Set([
-  'Mañana',
   'Tarde',
   'Nucleo',
   'Particulares',
   'Virtuales',
   'Club Deportivo',
+])
+
+const CATEGORIAS_CON_COLEGIO = new Set([
+  'Mañana',
 ])
 
 const CATEGORIA_TRANSFERENCIA_INTERNA = 'transferencia interna'
@@ -47,6 +51,8 @@ const nombreAlumno = (nombres?: string, apellidos?: string) => {
   const nombre = `${apellidos || ''} ${nombres || ''}`.trim()
   return nombre || 'Alumno'
 }
+
+const nombreColegio = (nombre?: string) => nombre?.trim() || 'Colegio'
 
 const normalizarTexto = (value: string) => value
   .toLowerCase()
@@ -77,6 +83,12 @@ const getErrorText = (error: unknown) => {
   return 'Error desconocido'
 }
 
+const isMissingColumnError = (error: unknown, columnName: string) => {
+  const text = getErrorText(error).toLowerCase()
+  const normalizedColumn = columnName.toLowerCase()
+  return text.includes(normalizedColumn) && (text.includes('column') || text.includes('schema cache') || text.includes('does not exist') || text.includes('no existe'))
+}
+
 export default function OperacionesIngresos() {
   const router = useRouter()
   const pathname = usePathname()
@@ -89,7 +101,7 @@ export default function OperacionesIngresos() {
   const [mensaje, setMensaje] = useState('')
   const [editId, setEditId] = useState<string | null>(null)
   const { periodoActual, periodoActualId, loading: cargandoPeriodo, error: periodoError } = usePeriodoEscolarActivo()
-  const { categorias, cuentas, alumnos, error: metadataError } = useIngresosMetadata()
+  const { categorias, cuentas, alumnos, colegios, error: metadataError } = useIngresosMetadata()
   const [periodos, setPeriodos] = useState<PeriodoOption[]>([])
   const [loadingPeriodos, setLoadingPeriodos] = useState(true)
   const [errorPeriodos, setErrorPeriodos] = useState('')
@@ -101,6 +113,7 @@ export default function OperacionesIngresos() {
     monto_usd: '',
     categoria_id: '',
     alumno_id: '',
+    colegio_id: '',
     cuenta_destino_id: '',
   })
 
@@ -111,6 +124,7 @@ export default function OperacionesIngresos() {
       monto_usd: '',
       categoria_id: '',
       alumno_id: '',
+      colegio_id: '',
       cuenta_destino_id: '',
     })
   }
@@ -221,6 +235,7 @@ export default function OperacionesIngresos() {
       monto_usd: i.monto_usd ? String(i.monto_usd) : '',
       categoria_id: i.categoria_id || '',
       alumno_id: i.alumno_id || '',
+      colegio_id: i.colegio_id || '',
       cuenta_destino_id: i.cuenta_destino_id || '',
     })
     setEditId(i.id ?? null)
@@ -243,8 +258,13 @@ export default function OperacionesIngresos() {
 
     const categoriaSeleccionada = categorias.find(c => c.id === formData.categoria_id)?.nombre || ''
     const categoriaRequiereAlumno = CATEGORIAS_CON_ALUMNO.has(categoriaSeleccionada)
+    const categoriaRequiereColegio = CATEGORIAS_CON_COLEGIO.has(categoriaSeleccionada)
     if (categoriaRequiereAlumno && !formData.alumno_id) {
       setMensaje('❌ Selecciona el alumno asociado al ingreso')
+      return
+    }
+    if (categoriaRequiereColegio && !formData.colegio_id) {
+      setMensaje('❌ Selecciona el colegio asociado al ingreso')
       return
     }
 
@@ -265,13 +285,44 @@ export default function OperacionesIngresos() {
       estado: 'confirmado',
       categoria_id: formData.categoria_id,
       alumno_id: categoriaRequiereAlumno ? formData.alumno_id : null,
+      colegio_id: categoriaRequiereColegio ? formData.colegio_id : null,
       cuenta_destino_id: formData.cuenta_destino_id,
       updated_at: new Date().toISOString(),
     }
 
+    const guardarSinColegioSiHaceFalta = async (errorInicial: unknown) => {
+      if (!payload.colegio_id || !isMissingColumnError(errorInicial, 'colegio_id')) {
+        return { error: errorInicial, warning: '' }
+      }
+
+      const payloadFallback = { ...payload, colegio_id: null }
+      if (editId) {
+        const fallback = await updateIngreso(editId, payloadFallback)
+        return {
+          error: fallback.error,
+          warning: fallback.error ? '' : '⚠️ Se guardó el ingreso, pero la base de datos aún no soporta vínculo estructurado con colegios. Aplica la migración v37.',
+        }
+      }
+
+      const fallback = await createIngreso({ ...payloadFallback, created_at: new Date().toISOString() })
+      return {
+        error: fallback.error,
+        warning: fallback.error ? '' : '⚠️ Se guardó el ingreso, pero la base de datos aún no soporta vínculo estructurado con colegios. Aplica la migración v37.',
+      }
+    }
+
     if (editId) {
       const { error } = await updateIngreso(editId, payload).then(r => ({ error: r.error }))
-      if (error) setMensaje(`❌ ${getErrorText(error)}`)
+      if (error) {
+        const fallback = await guardarSinColegioSiHaceFalta(error)
+        if (fallback.error) setMensaje(`❌ ${getErrorText(fallback.error)}`)
+        else {
+          setMensaje(fallback.warning || '✅ Ingreso actualizado')
+          setEditId(null)
+          limpiarFormulario()
+          await refresh()
+        }
+      }
       else {
         setMensaje('✅ Ingreso actualizado')
         setEditId(null)
@@ -280,7 +331,15 @@ export default function OperacionesIngresos() {
       }
     } else {
       const res = await createIngreso({ ...payload, created_at: new Date().toISOString() })
-      if (res.error) setMensaje(`❌ ${getErrorText(res.error)}`)
+      if (res.error) {
+        const fallback = await guardarSinColegioSiHaceFalta(res.error)
+        if (fallback.error) setMensaje(`❌ ${getErrorText(fallback.error)}`)
+        else {
+          setMensaje(fallback.warning || '✅ Ingreso registrado')
+          limpiarFormulario()
+          await refresh()
+        }
+      }
       else {
         setMensaje('✅ Ingreso registrado')
         limpiarFormulario()
@@ -312,8 +371,17 @@ export default function OperacionesIngresos() {
     return map
   }, [alumnos])
 
+  const colegiosMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const colegio of colegios) {
+      map.set(colegio.id, nombreColegio(colegio.nombre))
+    }
+    return map
+  }, [colegios])
+
   const categoriaSeleccionada = categoriasMap.get(formData.categoria_id) || ''
   const requiereAlumno = CATEGORIAS_CON_ALUMNO.has(categoriaSeleccionada)
+  const requiereColegio = CATEGORIAS_CON_COLEGIO.has(categoriaSeleccionada)
 
   const totalIngresos = lista.reduce((acc, ingreso) => {
     const categoriaNombre = categoriasMap.get(ingreso.categoria_id || '') || ''
@@ -481,10 +549,12 @@ export default function OperacionesIngresos() {
                       const categoriaId = e.target.value
                       const categoriaNombre = categoriasMap.get(categoriaId) || ''
                       const categoriaExigeAlumno = CATEGORIAS_CON_ALUMNO.has(categoriaNombre)
+                      const categoriaExigeColegio = CATEGORIAS_CON_COLEGIO.has(categoriaNombre)
                       setFormData(prev => ({
                         ...prev,
                         categoria_id: categoriaId,
                         alumno_id: categoriaExigeAlumno ? prev.alumno_id : '',
+                        colegio_id: categoriaExigeColegio ? prev.colegio_id : '',
                       }))
                     }}
                     className="w-full bg-transparent outline-none text-sm font-bold text-black"
@@ -511,22 +581,35 @@ export default function OperacionesIngresos() {
               </label>
             </div>
 
-            {requiereAlumno && (
+            {(requiereAlumno || requiereColegio) && (
               <label className="block">
-                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-black">Alumno</span>
+                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-black">{requiereColegio ? 'Colegio' : 'Alumno'}</span>
                 <select
-                  value={formData.alumno_id}
-                  onChange={e => setFormData({ ...formData, alumno_id: e.target.value })}
+                  value={requiereColegio ? formData.colegio_id : formData.alumno_id}
+                  onChange={e => setFormData({
+                    ...formData,
+                    alumno_id: requiereColegio ? formData.alumno_id : e.target.value,
+                    colegio_id: requiereColegio ? e.target.value : formData.colegio_id,
+                  })}
                   className="mt-2 w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none"
                 >
-                  <option value="">Seleccionar alumno</option>
-                  {alumnos.map(alumno => (
-                    <option key={alumno.id} value={alumno.id}>{nombreAlumno(alumno.nombres, alumno.apellidos)}</option>
-                  ))}
+                  <option value="">{requiereColegio ? 'Seleccionar colegio' : 'Seleccionar alumno'}</option>
+                  {requiereColegio
+                    ? colegios.map(colegio => (
+                      <option key={colegio.id} value={colegio.id}>{nombreColegio(colegio.nombre)}</option>
+                    ))
+                    : alumnos.map(alumno => (
+                      <option key={alumno.id} value={alumno.id}>{nombreAlumno(alumno.nombres, alumno.apellidos)}</option>
+                    ))}
                 </select>
-                {alumnos.length === 0 && (
+                {requiereAlumno && alumnos.length === 0 && (
                   <p className="mt-2 text-[10px] text-amber-700 bg-amber-50 rounded-xl p-3">
                     ⚠️ No hay alumnos activos para asociar a esta categoría.
+                  </p>
+                )}
+                {requiereColegio && colegios.length === 0 && (
+                  <p className="mt-2 text-[10px] text-amber-700 bg-amber-50 rounded-xl p-3">
+                    ⚠️ No hay colegios activos para asociar a esta categoría.
                   </p>
                 )}
               </label>
@@ -566,6 +649,9 @@ export default function OperacionesIngresos() {
               <p className="text-[9px] mt-2 text-gray-400 uppercase">{categoriasMap.get(i.categoria_id || '') || 'Sin categoria'}</p>
               {i.alumno_id && (
                 <p className="text-[9px] text-gray-400 uppercase">{alumnosMap.get(i.alumno_id) || 'Alumno no disponible'}</p>
+              )}
+              {i.colegio_id && (
+                <p className="text-[9px] text-gray-400 uppercase">{colegiosMap.get(i.colegio_id) || 'Colegio no disponible'}</p>
               )}
               <p className="text-[9px] text-gray-400 uppercase">{cuentasMap.get(i.cuenta_destino_id || '') || 'Sin cuenta'}</p>
               <div className="mt-3 flex items-center justify-between">
