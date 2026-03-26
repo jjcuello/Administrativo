@@ -332,34 +332,53 @@ export default function GestionPersonal() {
       return Array.from(m.values()).sort((a, b) => `${a.apellidos || ''} ${a.nombres || ''}`.localeCompare(`${b.apellidos || ''} ${b.nombres || ''}`))
     }
 
-    const acumulado: PersonalAsignado[] = []
+    const idsAsignados = new Set<string>()
 
     const { data: asignaciones, error: asignErr } = await supabase
       .from('personal_colegios')
-      .select('colegio_id, personal:personal_id(id, nombres, apellidos, cargo, estado, deleted_at)')
+      .select('personal_id')
       .eq('colegio_id', sedeId)
 
     if (!asignErr && asignaciones) {
-      for (const item of asignaciones as Array<{ personal?: PersonalAsignado | PersonalAsignado[] }>) {
-        if (Array.isArray(item.personal)) acumulado.push(...item.personal)
-        else if (item.personal) acumulado.push(item.personal)
+      for (const item of asignaciones as Array<{ personal_id?: string }>) {
+        if (item.personal_id) idsAsignados.add(item.personal_id)
       }
     }
 
     const { data: grupos, error: gruposErr } = await supabase
       .from('grupos_tardes')
-      .select('profesor_id, personal(id, nombres, apellidos, cargo, estado, deleted_at)')
+      .select('profesor_id')
       .eq('sede_id', sedeId)
 
     if (!gruposErr && grupos) {
-      for (const item of grupos as Array<{ personal?: PersonalAsignado | PersonalAsignado[] }>) {
-        if (Array.isArray(item.personal)) acumulado.push(...item.personal)
-        else if (item.personal) acumulado.push(item.personal)
+      for (const item of grupos as Array<{ profesor_id?: string }>) {
+        if (item.profesor_id) idsAsignados.add(item.profesor_id)
       }
     }
 
     if (asignErr && gruposErr) {
+      console.error('Error cargando asignaciones por sede', { sedeId, asignErr, gruposErr })
       setErrorCarga('No se pudo obtener personal asignado para la sede seleccionada')
+      setAsignadosPorSede(prev => ({ ...prev, [sedeId]: [] }))
+      setConteoAsignadosPorSede(prev => ({ ...prev, [sedeId]: 0 }))
+      setCargandoSede(false)
+      return
+    }
+
+    let acumulado: PersonalAsignado[] = []
+    const ids = Array.from(idsAsignados)
+    if (ids.length > 0) {
+      const { data: personalRows, error: personalErr } = await supabase
+        .from('personal')
+        .select('id, nombres, apellidos, cargo, estado, deleted_at')
+        .in('id', ids)
+
+      if (personalErr) {
+        console.error('Error cargando detalle de personal por sede', { sedeId, personalErr })
+        setErrorCarga('No se pudo obtener personal asignado para la sede seleccionada')
+      } else {
+        acumulado = (personalRows || []) as PersonalAsignado[]
+      }
     }
 
     const normalizados = normalizar(acumulado)
