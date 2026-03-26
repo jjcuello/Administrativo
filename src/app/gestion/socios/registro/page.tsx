@@ -1923,13 +1923,13 @@ export default function GestionSociosRegistroPage() {
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Cuenta</p>
                 <p className="mt-2 text-lg font-bold uppercase text-black">{resumenMesCuenta.cuentaNombre}</p>
               </div>
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="flex min-h-[104px] flex-col justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Ingresos totales</p>
-                <p className="mt-2 text-lg font-bold text-green-700">{formatMontoConSigno(resumenMesCuenta.ingresosGlobal)}</p>
+                <p className="text-right text-2xl font-bold leading-none tabular-nums text-green-700">{formatMontoConSigno(resumenMesCuenta.ingresosGlobal)}</p>
               </div>
-              <div className="rounded-2xl border border-black bg-black p-4 shadow-sm">
+              <div className="flex min-h-[104px] flex-col justify-between rounded-2xl border border-black bg-black p-4 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-300">Egresos totales</p>
-                <p className="mt-2 text-lg font-bold text-white">{formatMontoConSigno(resumenMesCuenta.egresosGlobal)}</p>
+                <p className="text-right text-2xl font-bold leading-none tabular-nums text-white">{formatMontoConSigno(resumenMesCuenta.egresosGlobal)}</p>
               </div>
             </div>
 
