@@ -19,6 +19,40 @@ type Colegio = {
   detalles_contrato?: string
 }
 
+const getContractAmounts = (colegio: Pick<Colegio, 'monto_fijo_mensual' | 'modalidad_pago'>) => {
+  const amount = Number(colegio.monto_fijo_mensual || 0)
+  const modalidad = (colegio.modalidad_pago || 'mensual').trim().toLowerCase()
+
+  if (modalidad === 'anual') {
+    return {
+      actual: amount,
+      monthlyEquivalent: amount / 12,
+      annualProjection: amount,
+    }
+  }
+
+  if (modalidad === 'trimestral') {
+    return {
+      actual: amount,
+      monthlyEquivalent: amount / 3,
+      annualProjection: amount * 4,
+    }
+  }
+
+  return {
+    actual: amount,
+    monthlyEquivalent: amount,
+    annualProjection: amount * 12,
+  }
+}
+
+const getModalidadLabel = (modalidad?: string | null) => {
+  const normalized = (modalidad || 'mensual').trim().toLowerCase()
+  if (normalized === 'anual') return 'Anual'
+  if (normalized === 'trimestral') return 'Trimestral'
+  return 'Mensual'
+}
+
 export default function RegistroColegiosContratos() {
   const router = useRouter()
   const [formData, setFormData] = useState({
@@ -131,8 +165,13 @@ export default function RegistroColegiosContratos() {
     nombreRef.current?.blur()
   }
 
-  const totalMensual = lista.reduce((acc, item) => acc + Number(item.monto_fijo_mensual || 0), 0)
+  const totalAnualProyectado = lista.reduce((acc, item) => acc + getContractAmounts(item).annualProjection, 0)
+  const totalMensualEquivalente = lista.reduce((acc, item) => acc + getContractAmounts(item).monthlyEquivalent, 0)
   const totalNinos = lista.reduce((acc, item) => acc + Number(item.cantidad_ninos || 0), 0)
+  const previewContrato = getContractAmounts({
+    monto_fijo_mensual: Number(formData.monto_fijo_mensual || 0),
+    modalidad_pago: formData.modalidad_pago,
+  })
   const formatearMonto = formatUSD
 
   return (
@@ -149,8 +188,12 @@ export default function RegistroColegiosContratos() {
             <p className="text-lg font-black text-black">{totalNinos}</p>
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl p-4">
-            <p className="text-gray-400 mb-1">Monto mensual total</p>
-            <p className="text-lg font-black text-black">${formatearMonto(totalMensual)}</p>
+            <p className="text-gray-400 mb-1">Monto anual proyectado</p>
+            <p className="text-lg font-black text-black">${formatearMonto(totalAnualProyectado)}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Equivalente mensual</p>
+            <p className="text-lg font-black text-black">${formatearMonto(totalMensualEquivalente)}</p>
           </div>
           {errorCarga && <p className="text-[10px] p-3 bg-red-50 text-red-700 rounded-2xl">❌ {errorCarga}</p>}
         </div>
@@ -197,6 +240,20 @@ export default function RegistroColegiosContratos() {
               <span className="absolute left-4 top-4 text-gray-300 font-black">$</span>
               <input required type="number" step="0.01" placeholder="MONTO CONTRATO" className="w-full bg-gray-100 rounded-xl p-4 pl-8 text-lg font-black border-none" value={formData.monto_fijo_mensual} onChange={e => setFormData({...formData, monto_fijo_mensual: e.target.value})} />
             </div>
+            <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-[10px] font-black uppercase tracking-[0.12em] text-gray-500">
+              <div className="flex items-center justify-between gap-3">
+                <span>Contrato {getModalidadLabel(formData.modalidad_pago)}</span>
+                <span className="text-black">${formatearMonto(previewContrato.actual)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span>Equivalente mensual</span>
+                <span className="text-black">${formatearMonto(previewContrato.monthlyEquivalent)}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <span>Proyección anual</span>
+                <span className="text-black">${formatearMonto(previewContrato.annualProjection)}</span>
+              </div>
+            </div>
           </div>
           <textarea placeholder="DETALLES DEL CONTRATO..." className="w-full bg-gray-50 rounded-[2rem] p-6 text-xs font-medium border-none italic text-black" value={formData.detalles_contrato} onChange={e => setFormData({...formData, detalles_contrato: e.target.value})} />
           <div className="flex gap-4">
@@ -218,12 +275,22 @@ export default function RegistroColegiosContratos() {
             <div key={c.id} onClick={() => seleccionarColegio(c)} className={`p-6 rounded-3xl shadow-sm cursor-pointer transition-all ${editId === c.id ? 'bg-black text-white border-black shadow-xl scale-95' : 'bg-white border border-gray-100 hover:shadow-xl'}`}>
               <div className="flex justify-between items-start mb-2">
                 <p className="text-sm uppercase leading-tight font-black">{c.nombre}</p>
-                <span className={`text-[8px] px-2 py-1 rounded-full uppercase ${editId === c.id ? 'bg-white text-black' : 'bg-black text-white'}`}>{c.modalidad_pago}</span>
+                <span className={`text-[8px] px-2 py-1 rounded-full uppercase ${editId === c.id ? 'bg-white text-black' : 'bg-black text-white'}`}>{getModalidadLabel(c.modalidad_pago)}</span>
               </div>
               <p className="text-[9px] italic mb-4 line-clamp-2">{c.detalles_contrato}</p>
-              <div className="mt-4 flex justify-between items-end border-t border-gray-50 pt-3">
-                <span className="text-[10px] font-bold text-gray-400">{c.cantidad_ninos} NIÑOS</span>
-                <span className="text-xl italic tracking-tighter font-black">${formatearMonto(c.monto_fijo_mensual)}</span>
+              <div className="mt-4 border-t border-gray-50 pt-3">
+                <div className="flex justify-between items-end gap-3">
+                  <span className="text-[10px] font-bold text-gray-400">{c.cantidad_ninos} NIÑOS</span>
+                  <span className="text-xl italic tracking-tighter font-black">${formatearMonto(getContractAmounts(c).actual)}</span>
+                </div>
+                <div className={`mt-2 flex justify-between text-[9px] font-bold uppercase tracking-[0.12em] ${editId === c.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                  <span>Equiv. mensual</span>
+                  <span>${formatearMonto(getContractAmounts(c).monthlyEquivalent)}</span>
+                </div>
+                <div className={`mt-1 flex justify-between text-[9px] font-bold uppercase tracking-[0.12em] ${editId === c.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                  <span>Proyección anual</span>
+                  <span>${formatearMonto(getContractAmounts(c).annualProjection)}</span>
+                </div>
               </div>
             </div>
           ))}
