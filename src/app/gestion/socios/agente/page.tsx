@@ -33,8 +33,15 @@ const normalizeRoleCode = (value?: string | null): RoleCode => {
   return 'consulta'
 }
 
+const createClientId = () => {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 const createMessage = (role: UiMessageRole, content: string): UiMessage => ({
-  id: crypto.randomUUID(),
+  id: createClientId(),
   role,
   content,
 })
