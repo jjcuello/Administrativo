@@ -41,6 +41,7 @@ const getPeriodoEtiqueta = (periodo?: Partial<PeriodoOption> | null) => (
 )
 
 const PROVEEDOR_OTROS = '__otros__'
+const CATEGORIA_NOMINA_UI = '__pago_nomina_ui__'
 const CATEGORIAS_CON_PROVEEDOR = ['inventario', 'suministro', 'uniforme']
 const CATEGORIAS_CON_PROFESOR = ['nomina base', 'nomina extra']
 const CATEGORIA_TRANSFERENCIA_INTERNA = 'transferencia interna'
@@ -68,6 +69,23 @@ const categoriaUsaProfesor = (nombreCategoria: string) => {
   const nombreNormalizado = normalizarTexto(nombreCategoria)
   return CATEGORIAS_CON_PROFESOR.some(keyword => nombreNormalizado.includes(keyword))
 }
+
+const categoriaEsNominaBase = (nombreCategoria: string) => normalizarTexto(nombreCategoria).includes('nomina base')
+const categoriaEsNominaExtra = (nombreCategoria: string) => normalizarTexto(nombreCategoria).includes('nomina extra')
+const categoriaEsNominaUi = (categoriaId: string) => categoriaId === CATEGORIA_NOMINA_UI
+
+const getCategoriaNombreUi = (nombreCategoria: string) => {
+  if (categoriaUsaProfesor(nombreCategoria)) return 'Pago Nómina'
+  return nombreCategoria
+}
+
+const getCategoriaDetalleNomina = (nombreCategoria: string) => {
+  if (categoriaEsNominaBase(nombreCategoria)) return 'Imputación interna: Base'
+  if (categoriaEsNominaExtra(nombreCategoria)) return 'Imputación interna: Extras'
+  return ''
+}
+
+const roundMoney = (value: number) => Math.round(value * 100) / 100
 
 const categoriaEsTransferenciaInterna = (nombreCategoria: string) => {
   return normalizarTexto(nombreCategoria) === CATEGORIA_TRANSFERENCIA_INTERNA
@@ -120,6 +138,7 @@ export default function OperacionesEgresos() {
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState('')
   const [editId, setEditId] = useState<string | null>(null)
+  const [editCategoriaNominaOriginalId, setEditCategoriaNominaOriginalId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     fecha_pago: new Date().toISOString().slice(0, 10),
@@ -188,6 +207,7 @@ export default function OperacionesEgresos() {
       profesor_id: '',
       descripcion: '',
     })
+    setEditCategoriaNominaOriginalId(null)
   }
 
   const lista = useMemo(() => {
@@ -254,18 +274,46 @@ export default function OperacionesEgresos() {
   }
 
   const categoriaActual = useMemo(
-    () => categorias.find(categoria => categoria.id === formData.categoria_id)?.nombre || '',
+    () => categoriaEsNominaUi(formData.categoria_id)
+      ? 'Pago Nómina'
+      : (categorias.find(categoria => categoria.id === formData.categoria_id)?.nombre || ''),
     [categorias, formData.categoria_id]
   )
 
+  const nominaCategorias = useMemo(() => {
+    const base = categorias.find((categoria) => categoriaEsNominaBase(categoria.nombre || '')) || null
+    const extra = categorias.find((categoria) => categoriaEsNominaExtra(categoria.nombre || '')) || null
+    return { base, extra }
+  }, [categorias])
+
+  const categoriasVisibles = useMemo(() => {
+    const items: Array<{ id: string; nombre: string }> = []
+    let nominaAgregada = false
+
+    for (const categoria of categorias) {
+      const nombre = categoria.nombre || ''
+      if (categoriaUsaProfesor(nombre)) {
+        if (!nominaAgregada) {
+          items.push({ id: CATEGORIA_NOMINA_UI, nombre: 'Pago Nómina' })
+          nominaAgregada = true
+        }
+        continue
+      }
+
+      items.push({ id: categoria.id, nombre })
+    }
+
+    return items
+  }, [categorias])
+
   const mostrarProveedor = useMemo(
-    () => categoriaUsaProveedor(categoriaActual),
+    () => !categoriaEsNominaUi(formData.categoria_id) && categoriaUsaProveedor(categoriaActual),
     [categoriaActual]
   )
 
   const mostrarProfesor = useMemo(
-    () => categoriaUsaProfesor(categoriaActual),
-    [categoriaActual]
+    () => categoriaEsNominaUi(formData.categoria_id) || categoriaUsaProfesor(categoriaActual),
+    [categoriaActual, formData.categoria_id]
   )
 
   const profesoresMap = useMemo(() => {
@@ -298,16 +346,113 @@ export default function OperacionesEgresos() {
       fecha_pago: e.fecha_pago || new Date().toISOString().slice(0, 10),
       periodo_nomina_ym: e.periodo_nomina_ym || getPeriodoYmFromDate(e.fecha_pago),
       monto_usd: e.monto_usd ? String(e.monto_usd) : '',
-      categoria_id: e.categoria_id || '',
+      categoria_id: usaProfesor ? CATEGORIA_NOMINA_UI : (e.categoria_id || ''),
       cuenta_id: e.cuenta_id || '',
       proveedor_id: proveedorEsOtro ? PROVEEDOR_OTROS : (e.proveedor_id || ''),
       proveedor_otro: proveedorEsOtro ? proveedorOtroGuardado : '',
       profesor_id: profesorIdGuardado,
       descripcion: e.observaciones || '',
     })
+    setEditCategoriaNominaOriginalId(usaProfesor ? (e.categoria_id || null) : null)
     setEditId(e.id ?? null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
     setMensaje('')
+  }
+
+  const resolverCategoriaNominaInterna = async (params: { profesorId: string; periodoYm: string; monto: number }) => {
+    const { profesorId, periodoYm, monto } = params
+    const baseCategoria = nominaCategorias.base
+    const extraCategoria = nominaCategorias.extra
+
+    if (!baseCategoria || !extraCategoria) {
+      return {
+        ok: false as const,
+        error: 'No están configuradas las categorías internas de nómina Base/Extras.',
+      }
+    }
+
+    const nominaRes = await supabase
+      .from('nominas_mensuales')
+      .select('id')
+      .is('deleted_at', null)
+      .eq('periodo_ym', periodoYm)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    if (nominaRes.error) {
+      return {
+        ok: false as const,
+        error: getErrorText(nominaRes.error),
+      }
+    }
+
+    const nominaId = ((nominaRes.data as Array<{ id?: string }> | null) ?? [])[0]?.id || ''
+    if (!nominaId) {
+      return {
+        ok: true as const,
+        splits: [{ categoriaId: baseCategoria.id, monto }],
+        note: 'No hay nómina calculada para ese período; el pago se registró como Base por defecto.',
+      }
+    }
+
+    const detalleRes = await supabase
+      .from('nominas_mensuales_detalle')
+      .select('neto_base')
+      .eq('nomina_id', nominaId)
+      .eq('personal_id', profesorId)
+      .limit(1)
+
+    if (detalleRes.error) {
+      return {
+        ok: false as const,
+        error: getErrorText(detalleRes.error),
+      }
+    }
+
+    const netoBase = Number((((detalleRes.data as Array<{ neto_base?: number | null }> | null) ?? [])[0]?.neto_base) || 0)
+
+    const pagosBaseRes = await supabase
+      .from('egresos')
+      .select('monto_usd')
+      .eq('profesor_id', profesorId)
+      .eq('categoria_id', baseCategoria.id)
+      .eq('periodo_nomina_ym', periodoYm)
+
+    if (pagosBaseRes.error) {
+      return {
+        ok: false as const,
+        error: getErrorText(pagosBaseRes.error),
+      }
+    }
+
+    const totalBasePagado = roundMoney((((pagosBaseRes.data as Array<{ monto_usd?: number | null }> | null) ?? [])
+      .reduce((acc, row) => acc + Number(row.monto_usd || 0), 0)))
+    const pendienteBase = roundMoney(Math.max(netoBase - totalBasePagado, 0))
+
+    if (pendienteBase <= 0) {
+      return {
+        ok: true as const,
+        splits: [{ categoriaId: extraCategoria.id, monto }],
+        note: 'La base ya está cubierta para ese período; el pago se imputó a Extras.',
+      }
+    }
+
+    if (monto <= pendienteBase) {
+      return {
+        ok: true as const,
+        splits: [{ categoriaId: baseCategoria.id, monto }],
+        note: '',
+      }
+    }
+
+    return {
+      ok: true as const,
+      splits: [
+        { categoriaId: baseCategoria.id, monto: pendienteBase },
+        { categoriaId: extraCategoria.id, monto: roundMoney(monto - pendienteBase) },
+      ],
+      note: 'El pago se dividió automáticamente entre Base pendiente y Extras.',
+    }
   }
 
   const guardar = async (ev: React.FormEvent) => {
@@ -340,10 +485,9 @@ export default function OperacionesEgresos() {
       ? (profesoresMap.get(formData.profesor_id) || null)
       : null
 
-    const payload = {
+    const payloadBase = {
       fecha_pago: formData.fecha_pago,
       monto_usd: parseFloat(formData.monto_usd || '0'),
-      categoria_id: formData.categoria_id,
       cuenta_id: formData.cuenta_id,
       profesor_id: mostrarProfesor
         ? (formData.profesor_id || null)
@@ -361,18 +505,69 @@ export default function OperacionesEgresos() {
       observaciones: formData.descripcion.trim() || null,
     }
 
+    const monto = parseFloat(formData.monto_usd || '0')
+
     if (editId) {
-      const { error } = await updateEgreso(editId, payload).then(r => ({ error: r.error }))
+      let categoriaIdActualizar = formData.categoria_id
+      let mensajeExito = '✅ Egreso actualizado'
+
+      if (categoriaEsNominaUi(formData.categoria_id)) {
+        categoriaIdActualizar = editCategoriaNominaOriginalId || nominaCategorias.base?.id || ''
+        if (!categoriaIdActualizar) {
+          setMensaje('❌ No están configuradas las categorías internas de nómina.')
+          setCargando(false)
+          return
+        }
+        mensajeExito = '✅ Egreso actualizado conservando la imputación interna de nómina'
+      }
+
+      const { error } = await updateEgreso(editId, { ...payloadBase, categoria_id: categoriaIdActualizar }).then(r => ({ error: r.error }))
       if (error) setMensaje(`❌ ${getErrorText(error)}`)
       else {
-        setMensaje('✅ Egreso actualizado')
+        setMensaje(mensajeExito)
         setEditId(null)
         limpiarFormulario()
         window.dispatchEvent(new CustomEvent('egresos:refresh'))
         await refreshEgresos()
       }
     } else {
-      const res = await createEgreso({ ...payload, created_at: new Date().toISOString() })
+      if (categoriaEsNominaUi(formData.categoria_id)) {
+        const resolucion = await resolverCategoriaNominaInterna({
+          profesorId: formData.profesor_id,
+          periodoYm: formData.periodo_nomina_ym,
+          monto,
+        })
+
+        if (!resolucion.ok) {
+          setMensaje(`❌ ${resolucion.error}`)
+          setCargando(false)
+          return
+        }
+
+        for (const split of resolucion.splits) {
+          const res = await createEgreso({
+            ...payloadBase,
+            categoria_id: split.categoriaId,
+            monto_usd: split.monto,
+            created_at: new Date().toISOString(),
+          })
+
+          if (res.error) {
+            setMensaje(`❌ ${getErrorText(res.error)}`)
+            setCargando(false)
+            return
+          }
+        }
+
+        setMensaje(resolucion.note ? `✅ Egreso registrado. ${resolucion.note}` : '✅ Egreso registrado')
+        limpiarFormulario()
+        window.dispatchEvent(new CustomEvent('egresos:refresh'))
+        await refreshEgresos()
+        setCargando(false)
+        return
+      }
+
+      const res = await createEgreso({ ...payloadBase, categoria_id: formData.categoria_id, created_at: new Date().toISOString() })
       if (res.error) setMensaje(`❌ ${getErrorText(res.error)}`)
       else {
         setMensaje('✅ Egreso registrado')
@@ -552,9 +747,11 @@ export default function OperacionesEgresos() {
                     value={formData.categoria_id}
                     onChange={e => {
                       const categoriaId = e.target.value
-                      const categoriaNombre = categorias.find(c => c.id === categoriaId)?.nombre || ''
+                      const categoriaNombre = categoriaEsNominaUi(categoriaId)
+                        ? 'Pago Nómina'
+                        : (categorias.find(c => c.id === categoriaId)?.nombre || '')
                       const puedeSeleccionarProveedor = categoriaUsaProveedor(categoriaNombre)
-                      const puedeSeleccionarProfesor = categoriaUsaProfesor(categoriaNombre)
+                      const puedeSeleccionarProfesor = categoriaEsNominaUi(categoriaId) || categoriaUsaProfesor(categoriaNombre)
 
                       setFormData({
                         ...formData,
@@ -570,7 +767,7 @@ export default function OperacionesEgresos() {
                     className="w-full bg-transparent outline-none text-sm font-bold text-black"
                   >
                     <option value="">Seleccionar</option>
-                    {categorias.map(c => (
+                    {categoriasVisibles.map(c => (
                       <option key={c.id} value={c.id}>{c.nombre}</option>
                     ))}
                   </select>
@@ -689,7 +886,10 @@ export default function OperacionesEgresos() {
                 <p className="text-sm uppercase leading-tight font-black">{e.observaciones || 'Egreso'}</p>
                 <span className={`text-[8px] px-2 py-1 rounded-full uppercase ${e.monto_usd && e.monto_usd > 0 ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700'}`}>EGRESO</span>
               </div>
-              <p className="text-[9px] mt-2 text-gray-400 uppercase">{categoriasMap.get(e.categoria_id || '') || 'Sin categoria'}</p>
+              <p className="text-[9px] mt-2 text-gray-400 uppercase">{getCategoriaNombreUi(categoriasMap.get(e.categoria_id || '') || 'Sin categoria')}</p>
+              {getCategoriaDetalleNomina(categoriasMap.get(e.categoria_id || '') || '') && (
+                <p className="text-[9px] text-gray-400 uppercase">{getCategoriaDetalleNomina(categoriasMap.get(e.categoria_id || '') || '')}</p>
+              )}
               <p className="text-[9px] text-gray-400 uppercase">{cuentasMap.get(e.cuenta_id || '') || 'Sin cuenta'}</p>
               <p className="text-[9px] text-gray-400 uppercase">
                 {categoriaUsaProfesor(categoriasMap.get(e.categoria_id || '') || '')
