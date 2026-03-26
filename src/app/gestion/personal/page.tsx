@@ -821,7 +821,7 @@ export default function GestionPersonal() {
       }
     }
 
-    if (error) setMensaje('❌ ' + error.message)
+    if (error) setMensaje('❌ ' + getErrorText(error))
     else {
       let mensajeFinal = vista === 'editar' ? '✅ Personal actualizado' : '✅ Personal registrado'
 
