@@ -98,10 +98,10 @@ export default function OperacionesHome() {
           <h1 className="mt-5 text-4xl font-black tracking-tight text-black md:text-6xl">Operaciones</h1>
 
           <p className="mx-auto mt-4 max-w-2xl text-base text-gray-600 md:text-lg">
-            Módulo de ingresos y egresos. Selecciona la sección para comenzar.
+            Módulo operativo de ingresos, egresos y horarios. Selecciona la sección para comenzar.
           </p>
 
-          <div className="mx-auto mt-10 grid max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mx-auto mt-10 grid max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
             <Link
               href="/operaciones/ingresos"
               className="rounded-2xl bg-black px-8 py-4 text-sm font-black uppercase tracking-[0.18em] text-white shadow-xl shadow-black/20 transition-all duration-200 hover:-translate-y-0.5 hover:bg-gray-900"
@@ -113,6 +113,12 @@ export default function OperacionesHome() {
               className="rounded-2xl border border-gray-300 bg-white px-8 py-4 text-sm font-black uppercase tracking-[0.18em] text-gray-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-black hover:text-black"
             >
               Egresos
+            </Link>
+            <Link
+              href="/operaciones/horarios"
+              className="rounded-2xl border border-gray-300 bg-white px-8 py-4 text-sm font-black uppercase tracking-[0.18em] text-gray-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-black hover:text-black"
+            >
+              Horarios
             </Link>
           </div>
 

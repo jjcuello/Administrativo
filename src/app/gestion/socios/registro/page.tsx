@@ -116,6 +116,7 @@ type IngresoMesRow = {
 type EgresoMesRow = {
   categoria_id: string | null
   cuenta_id: string | null
+  profesor_id?: string | null
   monto_usd: number | null
 }
 
@@ -127,6 +128,7 @@ type IngresoPeriodoRow = {
 
 type EgresoPeriodoRow = {
   categoria_id: string | null
+  profesor_id?: string | null
   monto_usd: number | null
   fecha_pago: string | null
 }
@@ -605,7 +607,8 @@ const buildResumenRubros = (
   categoriasById: Map<string, string>,
   rules: RubroRule[],
   sign: 1 | -1,
-  fallbackLabel?: string
+  fallbackLabel?: string,
+  categoriaNombreResolver?: (row: { categoria_id: string | null; monto_usd: number | null }) => string
 ) => {
   const totals = new Map<string, number>()
   for (const rule of rules) totals.set(rule.label, 0)
@@ -614,7 +617,9 @@ const buildResumenRubros = (
     const montoBase = roundMoney(Math.abs(Number(row.monto_usd || 0)))
     if (!montoBase) continue
 
-    const categoriaNombre = categoriasById.get(row.categoria_id || '') || ''
+    const categoriaNombre = categoriaNombreResolver
+      ? categoriaNombreResolver(row)
+      : (categoriasById.get(row.categoria_id || '') || '')
     const categoriaNormalizada = normalizeText(categoriaNombre)
     if (!categoriaNormalizada) continue
 
@@ -699,6 +704,30 @@ const formatMontoConSigno = (monto: number) => {
 const formatMontoColumna = (monto: number) => {
   if (!monto) return '—'
   return `$${formatUSD(monto)}`
+}
+
+const categoriaEsNomina = (nombreCategoria: string) => {
+  const normalizado = normalizeText(nombreCategoria)
+  return normalizado.includes('nomina') || normalizado.includes('nómina') || normalizado.includes('profesor')
+}
+
+const cargoEsAdministrativo = (cargo: string) => {
+  const normalizado = normalizeText(cargo)
+  return normalizado.includes('administr')
+}
+
+const getCategoriaEgresoConCargo = (
+  row: { categoria_id: string | null; profesor_id?: string | null },
+  categoriasById: Map<string, string>,
+  personalCargoById: Map<string, string>
+) => {
+  const categoriaBase = categoriasById.get(row.categoria_id || '') || ''
+  if (!categoriaEsNomina(categoriaBase)) return categoriaBase
+
+  const cargo = personalCargoById.get(row.profesor_id || '') || ''
+  if (cargoEsAdministrativo(cargo)) return 'Nómina Administrativo'
+
+  return categoriaBase
 }
 
 const formatMontoConSignoCompact = (monto: number) => {
@@ -1031,7 +1060,7 @@ export default function GestionSociosRegistroPage() {
     setCargandoResumenMes(true)
     setMensajeResumenMes('')
 
-    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes] = await Promise.all([
+    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes, personalRes] = await Promise.all([
       supabase
         .from('categorias_ingreso')
         .select('id, nombre')
@@ -1048,9 +1077,13 @@ export default function GestionSociosRegistroPage() {
         .lte('fecha_ingreso', rango.to),
       supabase
         .from('egresos')
-        .select('categoria_id, cuenta_id, monto_usd')
+        .select('categoria_id, cuenta_id, profesor_id, monto_usd')
         .gte('fecha_pago', rango.from)
         .lte('fecha_pago', rango.to),
+      supabase
+        .from('personal')
+        .select('id, cargo')
+        .eq('estado', 'activo'),
     ])
 
     if (categoriasIngresosRes.error) {
@@ -1081,12 +1114,24 @@ export default function GestionSociosRegistroPage() {
       return
     }
 
+    if (personalRes.error) {
+      setMensajeResumenMes(`❌ ${getErrorText(personalRes.error, 'No se pudo cargar personal para clasificar egresos de nómina.')}`)
+      setResumenMesCuenta(createEmptyResumenMes(periodoResumenYm, cuentaSeleccionada.nombre || 'Cuenta'))
+      setCargandoResumenMes(false)
+      return
+    }
+
     const categoriasIngresosById = new Map(
       (((categoriasIngresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
     )
 
     const categoriasEgresosById = new Map(
       (((categoriasEgresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
+    )
+
+    const personalCargoById = new Map(
+      ((((personalRes.data as Array<{ id: string; cargo: string | null }> | null) ?? [])
+        .map((item) => [item.id, item.cargo || ''])) as Array<[string, string]>)
     )
 
     const ingresosMes = (ingresosRes.data as IngresoMesRow[] | null) ?? []
@@ -1111,7 +1156,8 @@ export default function GestionSociosRegistroPage() {
       categoriasEgresosById,
       EGRESO_RUBROS,
       -1,
-      'GASTOS ADMINISTRATIVOS'
+      'GASTOS ADMINISTRATIVOS',
+      (row) => getCategoriaEgresoConCargo(row as EgresoMesRow, categoriasEgresosById, personalCargoById)
     )
 
     const totalIngresos = roundMoney(ingresosRubros.reduce((acc, item) => acc + item.monto, 0))
@@ -1154,7 +1200,7 @@ export default function GestionSociosRegistroPage() {
     setCargandoDistribucion(true)
     setMensajeDistribucion('')
 
-    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes] = await Promise.all([
+    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes, personalRes] = await Promise.all([
       supabase
         .from('categorias_ingreso')
         .select('id, nombre')
@@ -1171,9 +1217,13 @@ export default function GestionSociosRegistroPage() {
         .lte('fecha_ingreso', rangoHasta.to),
       supabase
         .from('egresos')
-        .select('categoria_id, monto_usd, fecha_pago')
+        .select('categoria_id, profesor_id, monto_usd, fecha_pago')
         .gte('fecha_pago', rangoDesde)
         .lte('fecha_pago', rangoHasta.to),
+      supabase
+        .from('personal')
+        .select('id, cargo')
+        .eq('estado', 'activo'),
     ])
 
     if (categoriasIngresosRes.error) {
@@ -1204,12 +1254,24 @@ export default function GestionSociosRegistroPage() {
       return
     }
 
+    if (personalRes.error) {
+      setMensajeDistribucion(`❌ ${getErrorText(personalRes.error, 'No se pudo cargar personal para clasificar egresos de nómina.')}`)
+      setResumenDistribucion(createEmptyDistribucionEscolar(periodoDistribucionYm))
+      setCargandoDistribucion(false)
+      return
+    }
+
     const categoriasIngresosById = new Map(
       (((categoriasIngresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
     )
 
     const categoriasEgresosById = new Map(
       (((categoriasEgresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
+    )
+
+    const personalCargoById = new Map(
+      ((((personalRes.data as Array<{ id: string; cargo: string | null }> | null) ?? [])
+        .map((item) => [item.id, item.cargo || ''])) as Array<[string, string]>)
     )
 
     const ingresosRows = (ingresosRes.data as IngresoPeriodoRow[] | null) ?? []
@@ -1223,7 +1285,8 @@ export default function GestionSociosRegistroPage() {
       categoriasEgresosById,
       EGRESO_RUBROS_DISTRIBUCION,
       -1,
-      'TOTAL GASTOS ADMINISTRATIVOS'
+      'TOTAL GASTOS ADMINISTRATIVOS',
+      (row) => getCategoriaEgresoConCargo(row as EgresoPeriodoRow, categoriasEgresosById, personalCargoById)
     )
 
     const totalIngresos = roundMoney(ingresosRubrosBase.reduce((acc, item) => acc + item.monto, 0))
@@ -1335,7 +1398,7 @@ export default function GestionSociosRegistroPage() {
     setCargandoBalance(true)
     setMensajeBalance('')
 
-    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes] = await Promise.all([
+    const [categoriasIngresosRes, categoriasEgresosRes, ingresosRes, egresosRes, personalRes] = await Promise.all([
       supabase
         .from('categorias_ingreso')
         .select('id, nombre')
@@ -1352,9 +1415,13 @@ export default function GestionSociosRegistroPage() {
         .lte('fecha_ingreso', rangoHasta.to),
       supabase
         .from('egresos')
-        .select('categoria_id, monto_usd')
+        .select('categoria_id, profesor_id, monto_usd')
         .gte('fecha_pago', rangoDesde)
         .lte('fecha_pago', rangoHasta.to),
+      supabase
+        .from('personal')
+        .select('id, cargo')
+        .eq('estado', 'activo'),
     ])
 
     if (categoriasIngresosRes.error) {
@@ -1385,6 +1452,13 @@ export default function GestionSociosRegistroPage() {
       return
     }
 
+    if (personalRes.error) {
+      setMensajeBalance(`❌ ${getErrorText(personalRes.error, 'No se pudo cargar personal para clasificar egresos de nómina.')}`)
+      setResumenBalance(createEmptyBalanceEscolar(periodoBalanceYm))
+      setCargandoBalance(false)
+      return
+    }
+
     const categoriasIngresosById = new Map(
       (((categoriasIngresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
     )
@@ -1393,8 +1467,13 @@ export default function GestionSociosRegistroPage() {
       (((categoriasEgresosRes.data as CategoriaRow[] | null) ?? []).map((item) => [item.id, item.nombre || '']) as Array<[string, string]>)
     )
 
+    const personalCargoById = new Map(
+      ((((personalRes.data as Array<{ id: string; cargo: string | null }> | null) ?? [])
+        .map((item) => [item.id, item.cargo || ''])) as Array<[string, string]>)
+    )
+
     const ingresosRows = (ingresosRes.data as Array<{ categoria_id: string | null; monto_usd: number | null }> | null) ?? []
-    const egresosRows = (egresosRes.data as Array<{ categoria_id: string | null; monto_usd: number | null }> | null) ?? []
+    const egresosRows = (egresosRes.data as Array<{ categoria_id: string | null; profesor_id: string | null; monto_usd: number | null }> | null) ?? []
     const ingresosRowsAnaliticos = excludeTransferenciaInternaRows(ingresosRows, categoriasIngresosById)
     const egresosRowsAnaliticos = excludeTransferenciaInternaRows(egresosRows, categoriasEgresosById)
 
@@ -1404,7 +1483,8 @@ export default function GestionSociosRegistroPage() {
       categoriasEgresosById,
       EGRESO_RUBROS_DISTRIBUCION,
       -1,
-      'TOTAL GASTOS ADMINISTRATIVOS'
+      'TOTAL GASTOS ADMINISTRATIVOS',
+      (row) => getCategoriaEgresoConCargo(row as EgresoPeriodoRow, categoriasEgresosById, personalCargoById)
     )
 
     const ingresos = buildBalanceRubros(ingresosRubrosBase, 'ingreso')
