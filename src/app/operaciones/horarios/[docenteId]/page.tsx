@@ -33,10 +33,17 @@ type ScheduleBlock = {
   colegioId: string
 }
 
+type ArrivalMarker = {
+  id: string
+  dayIndex: number
+  startSlot: number
+}
+
 type InteractionMode = 'move' | 'resize-start' | 'resize-end'
 
 type InteractionState = {
-  blockId: string
+  targetType: 'block' | 'arrival'
+  itemId: string
   mode: InteractionMode
   startX: number
   startY: number
@@ -73,6 +80,26 @@ const normalizeText = (value: string) => (
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
 const makeId = () => `blk_${Date.now()}_${Math.floor(Math.random() * 99999)}`
+const makeArrivalId = (dayIndex: number) => `arr_${dayIndex}`
+
+const buildDefaultArrivalMarkers = (): ArrivalMarker[] => (
+  DAYS.map((_, dayIndex) => ({
+    id: makeArrivalId(dayIndex),
+    dayIndex,
+    startSlot: 0,
+  }))
+)
+
+const colorFromId = (value: string) => {
+  const text = String(value || 'sin-colegio')
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(i)
+    hash |= 0
+  }
+  const index = Math.abs(hash) % COLOR_PALETTE.length
+  return COLOR_PALETTE[index]
+}
 
 const minutesToLabel = (totalMinutes: number) => {
   const hours24 = Math.floor(totalMinutes / 60)
@@ -112,7 +139,7 @@ const getDocenteNombre = (docente: PersonalDocente | null) => {
 
 const parseHorarioLaboral = (raw?: string | null) => {
   if (!raw || !raw.trim()) {
-    return { blocks: [] as ScheduleBlock[], notes: '' }
+    return { blocks: [] as ScheduleBlock[], notes: '', arrivalMarkers: buildDefaultArrivalMarkers() }
   }
 
   try {
@@ -148,11 +175,24 @@ const parseHorarioLaboral = (raw?: string | null) => {
     return {
       blocks,
       notes: typeof parsed?.notes === 'string' ? parsed.notes : '',
+      arrivalMarkers: Array.isArray(parsed?.arrivalMarkers)
+        ? (parsed.arrivalMarkers as Array<Partial<ArrivalMarker>>)
+          .map((item) => {
+            const dayIndex = clamp(Math.round(Number(item.dayIndex || 0)), 0, DAYS.length - 1)
+            const startSlot = clamp(Math.round(Number(item.startSlot || 0)), 0, SLOT_COUNT - 1)
+            return {
+              id: String(item.id || makeArrivalId(dayIndex)),
+              dayIndex,
+              startSlot,
+            } as ArrivalMarker
+          })
+        : buildDefaultArrivalMarkers(),
     }
   } catch {
     return {
       blocks: [],
       notes: raw,
+      arrivalMarkers: buildDefaultArrivalMarkers(),
     }
   }
 }
@@ -167,8 +207,11 @@ export default function OperacionesHorarioDocentePage() {
   const [docente, setDocente] = useState<PersonalDocente | null>(null)
   const [colegios, setColegios] = useState<ColegioItem[]>([])
   const [blocks, setBlocks] = useState<ScheduleBlock[]>([])
+  const [arrivalMarkers, setArrivalMarkers] = useState<ArrivalMarker[]>(buildDefaultArrivalMarkers)
   const [notes, setNotes] = useState('')
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
+  const [selectedArrivalId, setSelectedArrivalId] = useState<string | null>(null)
+  const [selectedTemplateColegioId, setSelectedTemplateColegioId] = useState<string | null>(null)
   const [interaction, setInteraction] = useState<InteractionState | null>(null)
 
   const [cargando, setCargando] = useState(true)
@@ -178,8 +221,8 @@ export default function OperacionesHorarioDocentePage() {
 
   const colegioColorById = useMemo(() => {
     const map = new Map<string, string>()
-    colegios.forEach((colegio, index) => {
-      map.set(colegio.id, COLOR_PALETTE[index % COLOR_PALETTE.length])
+    colegios.forEach((colegio) => {
+      map.set(colegio.id, colorFromId(colegio.id))
     })
     map.set('sin-colegio', '#e5e7eb')
     return map
@@ -293,8 +336,10 @@ export default function OperacionesHorarioDocentePage() {
         const parsed = parseHorarioLaboral(row.horario_laboral)
         setDocente(row)
         setBlocks(parsed.blocks)
+        setArrivalMarkers(parsed.arrivalMarkers)
         setNotes(parsed.notes)
         setSelectedBlockId(parsed.blocks[0]?.id || null)
+        setSelectedArrivalId(null)
         setCargando(false)
         return
       }
@@ -317,8 +362,10 @@ export default function OperacionesHorarioDocentePage() {
       const parsed = parseHorarioLaboral(row.horario_laboral)
       setDocente(row)
       setBlocks(parsed.blocks)
+      setArrivalMarkers(parsed.arrivalMarkers)
       setNotes(parsed.notes)
       setSelectedBlockId(parsed.blocks[0]?.id || null)
+      setSelectedArrivalId(null)
       setCargando(false)
     }
 
@@ -339,8 +386,21 @@ export default function OperacionesHorarioDocentePage() {
       const pointerDay = clamp(Math.floor((event.clientX - rect.left) / dayWidth), 0, DAYS.length - 1)
       const deltaSlots = Math.round((event.clientY - interaction.startY) / SLOT_HEIGHT)
 
+      if (interaction.targetType === 'arrival') {
+        const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, SLOT_COUNT - 1)
+        setArrivalMarkers((prev) => prev.map((marker) => {
+          if (marker.id !== interaction.itemId) return marker
+          return {
+            ...marker,
+            dayIndex: pointerDay,
+            startSlot: nextStart,
+          }
+        }))
+        return
+      }
+
       setBlocks((prev) => prev.map((block) => {
-        if (block.id !== interaction.blockId) return block
+        if (block.id !== interaction.itemId) return block
 
         if (interaction.mode === 'move') {
           const nextDuration = interaction.originalDurationSlots
@@ -397,6 +457,7 @@ export default function OperacionesHorarioDocentePage() {
 
     setBlocks((prev) => [...prev, nextBlock])
     setSelectedBlockId(nextBlock.id)
+    setSelectedArrivalId(null)
     setMensajeGuardado('')
   }
 
@@ -409,6 +470,7 @@ export default function OperacionesHorarioDocentePage() {
     if (!selectedBlockId) return
 
     setBlocks((prev) => prev.filter((item) => item.id !== selectedBlockId))
+    setSelectedArrivalId(null)
     setSelectedBlockId((prev) => {
       const remaining = blocks.filter((item) => item.id !== prev)
       return remaining[0]?.id || null
@@ -429,6 +491,7 @@ export default function OperacionesHorarioDocentePage() {
         end: '15:30',
         minutes: 15,
       },
+      arrivalMarkers,
       blocks,
       notes,
     }
@@ -448,13 +511,60 @@ export default function OperacionesHorarioDocentePage() {
     setGuardando(false)
   }
 
+  const handleTemplateDragStart = (event: React.DragEvent<HTMLButtonElement>, colegioId: string) => {
+    event.dataTransfer.setData('text/colegio-id', colegioId)
+    event.dataTransfer.effectAllowed = 'copy'
+    setSelectedTemplateColegioId(colegioId)
+  }
+
+  const createBlockFromDrop = (clientX: number, clientY: number, colegioId: string) => {
+    if (!gridRef.current) return
+    const rect = gridRef.current.getBoundingClientRect()
+
+    const dayWidth = rect.width / DAYS.length
+    const dayIndex = clamp(Math.floor((clientX - rect.left) / dayWidth), 0, DAYS.length - 1)
+    const slot = clamp(Math.floor((clientY - rect.top) / SLOT_HEIGHT), 0, SLOT_COUNT - 1)
+
+    const colegioNombre = colegios.find((item) => item.id === colegioId)?.nombre || 'Clase'
+    const nextBlock: ScheduleBlock = {
+      id: makeId(),
+      dayIndex,
+      startSlot: slot,
+      durationSlots: 4,
+      title: colegioNombre,
+      colegioId,
+    }
+
+    setBlocks((prev) => [...prev, nextBlock])
+    setSelectedBlockId(nextBlock.id)
+    setSelectedArrivalId(null)
+    setMensajeGuardado('')
+  }
+
+  const handleGridDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const colegioId = event.dataTransfer.getData('text/colegio-id')
+    if (!colegioId) return
+
+    event.preventDefault()
+    createBlockFromDrop(event.clientX, event.clientY, colegioId)
+  }
+
+  const handleGridDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (event.dataTransfer.types.includes('text/colegio-id')) {
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
   const startInteraction = (event: React.MouseEvent, block: ScheduleBlock, mode: InteractionMode) => {
     event.preventDefault()
     event.stopPropagation()
 
     setSelectedBlockId(block.id)
+    setSelectedArrivalId(null)
     setInteraction({
-      blockId: block.id,
+      targetType: 'block',
+      itemId: block.id,
       mode,
       startX: event.clientX,
       startY: event.clientY,
@@ -462,6 +572,25 @@ export default function OperacionesHorarioDocentePage() {
       originalStartSlot: block.startSlot,
       originalDurationSlots: block.durationSlots,
     })
+  }
+
+  const startArrivalInteraction = (event: React.MouseEvent, marker: ArrivalMarker) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    setSelectedArrivalId(marker.id)
+    setSelectedBlockId(null)
+    setInteraction({
+      targetType: 'arrival',
+      itemId: marker.id,
+      mode: 'move',
+      startX: event.clientX,
+      startY: event.clientY,
+      originalDayIndex: marker.dayIndex,
+      originalStartSlot: marker.startSlot,
+      originalDurationSlots: 1,
+    })
+    setMensajeGuardado('')
   }
 
   const rowHeightPx = SLOT_COUNT * SLOT_HEIGHT
@@ -580,7 +709,13 @@ export default function OperacionesHorarioDocentePage() {
                         ))}
                       </div>
 
-                      <div className="relative col-span-5" ref={gridRef} style={{ height: rowHeightPx }}>
+                      <div
+                        className="relative col-span-5"
+                        ref={gridRef}
+                        style={{ height: rowHeightPx }}
+                        onDrop={handleGridDrop}
+                        onDragOver={handleGridDragOver}
+                      >
                         {DAYS.map((_, dayIndex) => (
                           <div
                             key={`day-bg-${dayIndex}`}
@@ -597,14 +732,19 @@ export default function OperacionesHorarioDocentePage() {
                           />
                         ))}
 
-                        {DAYS.map((_, dayIndex) => (
+                        {arrivalMarkers.map((marker) => (
                           <div
-                            key={`arrival-${dayIndex}`}
-                            className="absolute z-10 rounded-md border border-blue-300 bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700"
+                            key={marker.id}
+                            onMouseDown={(event) => startArrivalInteraction(event, marker)}
+                            onClick={() => {
+                              setSelectedArrivalId(marker.id)
+                              setSelectedBlockId(null)
+                            }}
+                            className={`absolute z-20 rounded-md border px-2 py-0.5 text-[10px] font-bold text-blue-700 cursor-move ${selectedArrivalId === marker.id ? 'border-blue-700 ring-1 ring-blue-700 bg-blue-200' : 'border-blue-300 bg-blue-100'}`}
                             style={{
-                              left: `calc(${(dayIndex * 100) / DAYS.length}% + 4px)`,
+                              left: `calc(${(marker.dayIndex * 100) / DAYS.length}% + 4px)`,
                               width: `calc(${100 / DAYS.length}% - 8px)`,
-                              top: 2,
+                              top: (marker.startSlot * SLOT_HEIGHT) + 2,
                               height: SLOT_HEIGHT - 4,
                             }}
                           >
@@ -731,6 +871,32 @@ export default function OperacionesHorarioDocentePage() {
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-black outline-none transition-all focus:border-black"
                     placeholder="Ej: Coordinacion, guardias, observaciones del docente..."
                   />
+                </div>
+
+                <div className="mt-6">
+                  <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">Colegios (arrastra al horario)</label>
+                  <div className="space-y-2">
+                    {colegios.length === 0 ? (
+                      <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500">No hay colegios cargados.</p>
+                    ) : colegios.map((colegio) => {
+                      const color = colegioColorById.get(colegio.id) || '#e5e7eb'
+                      const selected = selectedTemplateColegioId === colegio.id
+                      return (
+                        <button
+                          key={colegio.id}
+                          type="button"
+                          draggable
+                          onClick={() => setSelectedTemplateColegioId(colegio.id)}
+                          onDragStart={(event) => handleTemplateDragStart(event, colegio.id)}
+                          className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-bold text-gray-700 transition-all ${selected ? 'border-black' : 'border-gray-300'}`}
+                          style={{ backgroundColor: color }}
+                        >
+                          <span className="h-3 w-3 rounded-full border border-gray-400 bg-white/70" />
+                          <span>{colegio.nombre}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               </aside>
             </section>
