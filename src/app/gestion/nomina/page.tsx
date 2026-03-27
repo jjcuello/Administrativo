@@ -834,6 +834,7 @@ export default function GestionNominaPage() {
     const pagosPrevios: Record<string, number> = {}
     const pagosPeriodo: Record<string, number> = {}
     const abonosPeriodo: Record<string, AbonoDetalleNomina[]> = {}
+    const periodosArrastreIgnorados = new Set<string>()
 
     for (const pago of pagos) {
       const personalId = pago.profesor_id || ''
@@ -894,7 +895,10 @@ export default function GestionNominaPage() {
         // reliably decide whether it is debt settlement or true advance. Do not
         // carry it into current-month saldo to avoid false "pagado" states.
         if (!periodosConNominaPrevia.has(periodoPago)) {
-          warnings.push(`Se ignoró arrastre de pago imputado a ${periodoPago} porque no existe nómina consolidada para ese período.`)
+          if (!periodosArrastreIgnorados.has(periodoPago)) {
+            warnings.push(`Se ignoró arrastre de pago imputado a ${periodoPago} porque no existe nómina consolidada para ese período.`)
+            periodosArrastreIgnorados.add(periodoPago)
+          }
           continue
         }
 
@@ -920,12 +924,17 @@ export default function GestionNominaPage() {
       adelantos[personalId] = roundMoney(Math.max(saldoPrevio + (pagosPeriodo[personalId] || 0), 0))
     }
 
+    const warningsUnicos = Array.from(new Set(warnings.map((warning) => warning.trim()).filter(Boolean)))
+    const resumenWarnings = warningsUnicos.length > 3
+      ? `${warningsUnicos.slice(0, 3).join(' | ')} | +${warningsUnicos.length - 3} aviso(s) adicional(es).`
+      : warningsUnicos.join(' | ')
+
     return {
       adelantos,
       pagosPeriodo,
       arrastrePrevio,
       abonosPeriodo,
-      error: warnings.length > 0 ? warnings.join(' ') : null,
+      error: resumenWarnings || null,
     }
   }, [])
 
@@ -2287,7 +2296,7 @@ export default function GestionNominaPage() {
               </div>
 
               {mensaje && (
-                <p className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700">
+                <p className="mt-4 max-h-44 overflow-y-auto whitespace-pre-wrap break-words rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-medium leading-relaxed text-gray-700">
                   {mensaje}
                 </p>
               )}
