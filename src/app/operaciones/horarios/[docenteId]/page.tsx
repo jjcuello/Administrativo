@@ -3,7 +3,7 @@
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Clock3, GripVertical, Save, Trash2, User } from 'lucide-react'
+import { ArrowLeft, Clock3, Save, Trash2, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 type PersonalDocente = {
@@ -257,13 +257,14 @@ export default function OperacionesHorarioDocentePage() {
 
     return Array.from(totals.entries()).map(([colegioId, minutes]) => {
       const color = colegioColorById.get(colegioId) || '#e5e7eb'
+      const nombre = colegios.find((item) => item.id === colegioId)?.nombre || 'Sin colegio'
       const horas = Math.floor(minutes / 60)
       const mins = minutes % 60
       const horasLabel = `${horas}h ${String(mins).padStart(2, '0')}m`
 
-      return { colegioId, color, horasLabel }
+      return { colegioId, nombre, color, horasLabel }
     })
-  }, [blocks, colegioColorById])
+  }, [blocks, colegioColorById, colegios])
 
   useEffect(() => {
     let active = true
@@ -725,6 +726,7 @@ export default function OperacionesHorarioDocentePage() {
                 ) : resumenColegios.map((item) => (
                   <div key={item.colegioId} className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700">
                     <span className="h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: item.color }} />
+                    <span>{item.nombre}</span>
                     <span className="text-gray-400">{item.horasLabel}</span>
                   </div>
                 ))}
@@ -850,7 +852,7 @@ export default function OperacionesHorarioDocentePage() {
                               key={block.id}
                               onMouseDown={(event) => startInteraction(event, block, 'move')}
                               onClick={() => setSelectedBlockId(block.id)}
-                              className={`absolute z-20 rounded-lg border px-2 py-1 shadow-sm ${isSelected ? 'border-black ring-1 ring-black' : 'border-gray-400'} cursor-move`}
+                              className={`absolute z-20 cursor-move rounded-lg border px-2 py-1 text-center shadow-sm ${isSelected ? 'border-black ring-1 ring-black' : 'border-gray-400'} flex flex-col items-center justify-center`}
                               style={{
                                 left: `calc(${(block.dayIndex * 100) / DAYS.length}% + 4px)`,
                                 width: `calc(${100 / DAYS.length}% - 8px)`,
@@ -864,11 +866,6 @@ export default function OperacionesHorarioDocentePage() {
                                 onMouseDown={(event) => startInteraction(event, block, 'resize-start')}
                               />
 
-                              <div className="mb-1 flex items-center gap-1">
-                                <GripVertical size={12} className="text-gray-600" />
-                                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-700">Clase</span>
-                              </div>
-
                               <p className="text-[10px] font-semibold text-gray-700">{blockTimeLabel(block)}</p>
 
                               <input
@@ -877,7 +874,7 @@ export default function OperacionesHorarioDocentePage() {
                                 onMouseDown={(event) => event.stopPropagation()}
                                 onClick={(event) => event.stopPropagation()}
                                 placeholder="Escribe nombre"
-                                className="mt-1 w-full border-none bg-transparent p-0 text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
+                                className="mt-1 w-full border-none bg-transparent p-0 text-center text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
                               />
 
                               <div
