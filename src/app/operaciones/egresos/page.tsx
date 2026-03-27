@@ -46,6 +46,7 @@ const CATEGORIAS_CON_PROVEEDOR = ['inventario', 'suministro', 'uniforme']
 const CATEGORIAS_CON_PROFESOR = ['nomina base', 'nomina extra']
 const CATEGORIA_TRANSFERENCIA_INTERNA = 'transferencia interna'
 const PERIODO_NOMINA_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/
+const EGRESOS_POR_PAGINA = 12
 
 const getPeriodoYmFromDate = (value?: string | null) => {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -139,6 +140,7 @@ export default function OperacionesEgresos() {
   const [mensaje, setMensaje] = useState('')
   const [editId, setEditId] = useState<string | null>(null)
   const [editCategoriaNominaOriginalId, setEditCategoriaNominaOriginalId] = useState<string | null>(null)
+  const [paginaEgresos, setPaginaEgresos] = useState(1)
 
   const [formData, setFormData] = useState({
     fecha_pago: new Date().toISOString().slice(0, 10),
@@ -224,6 +226,10 @@ export default function OperacionesEgresos() {
       )
     })
   }, [egresosData, debounced])
+
+  useEffect(() => {
+    setPaginaEgresos(1)
+  }, [debounced, periodoSeleccionadoId])
 
   const errorCarga = egresosError
     ? getErrorText(egresosError)
@@ -607,6 +613,18 @@ export default function OperacionesEgresos() {
     return acc + Number(egreso.monto_usd || 0)
   }, 0)
 
+  const totalPaginasEgresos = Math.max(1, Math.ceil(lista.length / EGRESOS_POR_PAGINA))
+
+  const paginaEgresosAjustada = Math.min(paginaEgresos, totalPaginasEgresos)
+
+  const listaPaginada = useMemo(() => {
+    const inicio = (paginaEgresosAjustada - 1) * EGRESOS_POR_PAGINA
+    return lista.slice(inicio, inicio + EGRESOS_POR_PAGINA)
+  }, [lista, paginaEgresosAjustada])
+
+  const indiceInicioEgresos = lista.length === 0 ? 0 : ((paginaEgresosAjustada - 1) * EGRESOS_POR_PAGINA) + 1
+  const indiceFinEgresos = Math.min(paginaEgresosAjustada * EGRESOS_POR_PAGINA, lista.length)
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-gray-50 to-gray-100 p-4 md:p-6 uppercase tracking-tight font-black text-black">
       <div className="mx-auto flex w-full max-w-[1700px] flex-col gap-4 md:flex-row">
@@ -880,10 +898,36 @@ export default function OperacionesEgresos() {
         </form>
       </main>
 
-      <aside className="md:w-1/5 w-full rounded-[2rem] border border-gray-200/80 bg-white/90 p-6 shadow-xl backdrop-blur md:p-8 overflow-y-auto">
-        <h3 className="text-[10px] text-gray-400 tracking-[0.2em] mb-6 flex items-center gap-2 font-black uppercase">Egresos ({lista.length})</h3>
-        <div className="space-y-3">
-          {lista.map((e) => (
+      <aside className="md:sticky md:top-4 md:max-h-[calc(100vh-2rem)] md:w-1/5 w-full rounded-[2rem] border border-gray-200/80 bg-white/90 p-6 shadow-xl backdrop-blur md:p-8">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[10px] text-gray-400 tracking-[0.2em] flex items-center gap-2 font-black uppercase">Egresos ({lista.length})</h3>
+          <span className="text-[9px] text-gray-500">
+            {indiceInicioEgresos}-{indiceFinEgresos}
+          </span>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-2 py-2 text-[10px]">
+          <button
+            type="button"
+            onClick={() => setPaginaEgresos((prev) => Math.max(1, prev - 1))}
+            disabled={paginaEgresosAjustada <= 1}
+            className="rounded-xl border border-gray-300 bg-white px-2 py-1 font-black text-gray-700 disabled:opacity-40"
+          >
+            Anterior
+          </button>
+          <span className="font-black text-gray-600">{paginaEgresosAjustada}/{totalPaginasEgresos}</span>
+          <button
+            type="button"
+            onClick={() => setPaginaEgresos((prev) => Math.min(totalPaginasEgresos, prev + 1))}
+            disabled={paginaEgresosAjustada >= totalPaginasEgresos}
+            className="rounded-xl border border-gray-300 bg-white px-2 py-1 font-black text-gray-700 disabled:opacity-40"
+          >
+            Siguiente
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-3 md:max-h-[calc(100vh-15rem)] md:overflow-y-auto md:pr-1">
+          {listaPaginada.map((e) => (
             <div key={e.id} onClick={() => seleccionar(e)} className={`p-5 rounded-3xl border transition-all cursor-pointer ${editId === e.id ? 'bg-black text-white border-black shadow-xl shadow-black/20' : 'bg-white border-gray-200 shadow-sm hover:shadow-xl'}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm uppercase leading-tight font-black">{e.observaciones || 'Egreso'}</p>
