@@ -15,7 +15,12 @@ type CategoriaEgresoMeta = { id: string; nombre: string }
 type CuentaMeta = { id: string; nombre: string }
 type AlumnoMeta = { id: string; nombres?: string; apellidos?: string }
 type ColegioMeta = { id: string; nombre?: string; tipo?: string | null }
-type ProveedorMeta = { id: string; nombre_comercial?: string }
+type ProveedorMeta = {
+  id: string
+  nombre?: string
+  nombre_comercial?: string
+  destino_contable_egresos?: 'administrativo' | 'operativo'
+}
 type ProfesorMeta = { id: string; nombres?: string; apellidos?: string; cargo?: string }
 type CategoriaIngresoSeed = { nombre: string; descripcion: string }
 type PeriodoEscolarActivoMeta = { id: string; codigo?: string | null; nombre?: string | null }
@@ -407,7 +412,7 @@ export function useEgresosMetadata() {
 
     const { data: provs, error: provErr } = await supabase
       .from('proveedores')
-      .select('id, nombre_comercial')
+      .select('id, nombre, nombre_comercial, destino_contable_egresos')
       .is('deleted_at', null)
       .order('nombre_comercial')
     if (provErr && !nextError) nextError = provErr

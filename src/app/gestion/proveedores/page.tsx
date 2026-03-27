@@ -16,6 +16,7 @@ type Proveedor = {
   email: string | null
   direccion: string | null
   condiciones_pago: string | null
+  destino_contable_egresos: 'administrativo' | 'operativo'
   estado: 'activo' | 'inactivo'
   notas: string | null
   created_at: string
@@ -44,6 +45,7 @@ export default function GestionProveedores() {
     email: '',
     direccion: '',
     condiciones_pago: '',
+    destino_contable_egresos: 'administrativo' as 'administrativo' | 'operativo',
     estado: 'activo' as 'activo' | 'inactivo',
     notas: ''
   })
@@ -59,6 +61,7 @@ export default function GestionProveedores() {
       email: '',
       direccion: '',
       condiciones_pago: '',
+      destino_contable_egresos: 'administrativo',
       estado: 'activo',
       notas: ''
     })
@@ -109,6 +112,7 @@ export default function GestionProveedores() {
       email: p.email || '',
       direccion: p.direccion || '',
       condiciones_pago: p.condiciones_pago || '',
+      destino_contable_egresos: p.destino_contable_egresos || 'administrativo',
       estado: p.estado || 'activo',
       notas: p.notas || ''
     })
@@ -142,6 +146,7 @@ export default function GestionProveedores() {
       email: formData.email.trim() || null,
       direccion: formData.direccion.trim() || null,
       condiciones_pago: formData.condiciones_pago.trim() || null,
+      destino_contable_egresos: formData.destino_contable_egresos,
       estado: formData.estado,
       notas: formData.notas.trim() || null,
       updated_at: new Date().toISOString()
@@ -271,6 +276,12 @@ export default function GestionProveedores() {
             <input placeholder="DIRECCIÓN" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.direccion} onChange={e => setFormData({ ...formData, direccion: e.target.value })} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input placeholder="CONDICIONES DE PAGO" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.condiciones_pago} onChange={e => setFormData({ ...formData, condiciones_pago: e.target.value })} />
+              <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.destino_contable_egresos} onChange={e => setFormData({ ...formData, destino_contable_egresos: e.target.value as 'administrativo' | 'operativo' })}>
+                <option value="administrativo">Egresos por defecto: Administrativo</option>
+                <option value="operativo">Egresos por defecto: Operativo</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.estado} onChange={e => setFormData({ ...formData, estado: e.target.value as 'activo' | 'inactivo' })}>
                 <option value="activo">Activo</option>
                 <option value="inactivo">Inactivo</option>
@@ -310,6 +321,7 @@ export default function GestionProveedores() {
                 <p>Contacto: {p.contacto_nombre || 'N/A'}</p>
                 <p>Teléfono: {p.telefono || 'N/A'}</p>
                 <p>Email: {p.email || 'N/A'}</p>
+                <p>Default egreso: {p.destino_contable_egresos === 'operativo' ? 'Operativo' : 'Administrativo'}</p>
               </div>
 
               <div className="mt-4 flex items-center gap-2">

@@ -49,6 +49,7 @@ const CATEGORIA_TRANSFERENCIA_INTERNA = 'transferencia interna'
 const PERIODO_NOMINA_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/
 const CATEGORIAS_OCULTAS_UI = ['eventos de promocion / banners', 'publicidad digital (ads)']
 const CATEGORIA_GASTOS_ADMINISTRATIVOS = 'gastos administrativos'
+const CATEGORIA_GASTOS_OPERATIVOS = 'gastos operativos varios'
 const EGRESOS_POR_PAGINA = 12
 
 const getPeriodoYmFromDate = (value?: string | null) => {
@@ -160,6 +161,7 @@ export default function OperacionesEgresos() {
     proveedor_id: '',
     proveedor_otro: '',
     profesor_id: '',
+    contabilizacion_destino: 'administrativo',
     descripcion: '',
   })
 
@@ -216,10 +218,19 @@ export default function OperacionesEgresos() {
       proveedor_id: '',
       proveedor_otro: '',
       profesor_id: '',
+      contabilizacion_destino: 'administrativo',
       descripcion: '',
     })
     setEditCategoriaNominaOriginalId(null)
   }
+
+  const proveedoresById = useMemo(() => {
+    const map = new Map<string, 'administrativo' | 'operativo'>()
+    for (const proveedor of proveedores) {
+      map.set(proveedor.id, proveedor.destino_contable_egresos === 'operativo' ? 'operativo' : 'administrativo')
+    }
+    return map
+  }, [proveedores])
 
   const lista = useMemo(() => {
     const base = (egresosData as Egreso[] | null) ?? []
@@ -302,6 +313,11 @@ export default function OperacionesEgresos() {
     [categorias]
   )
 
+  const categoriaGastosOperativos = useMemo(
+    () => categorias.find((categoria) => normalizarTexto(categoria.nombre || '') === CATEGORIA_GASTOS_OPERATIVOS) || null,
+    [categorias]
+  )
+
   const nominaCategorias = useMemo(() => {
     const base = categorias.find((categoria) => categoriaEsNominaBase(categoria.nombre || '')) || null
     const extra = categorias.find((categoria) => categoriaEsNominaExtra(categoria.nombre || '')) || null
@@ -347,6 +363,11 @@ export default function OperacionesEgresos() {
     [categoriaActual, formData.categoria_id]
   )
 
+  const mostrarContabilizacionProveedor = useMemo(
+    () => categoriaEsServiciosUi(formData.categoria_id) && !!formData.proveedor_id,
+    [formData.categoria_id, formData.proveedor_id]
+  )
+
   const profesoresMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const profesor of profesores) {
@@ -382,6 +403,7 @@ export default function OperacionesEgresos() {
       proveedor_id: proveedorEsOtro ? PROVEEDOR_OTROS : (e.proveedor_id || ''),
       proveedor_otro: proveedorEsOtro ? proveedorOtroGuardado : '',
       profesor_id: profesorIdGuardado,
+      contabilizacion_destino: normalizarTexto(categoriaNombreSeleccionada) === CATEGORIA_GASTOS_OPERATIVOS ? 'operativo' : 'administrativo',
       descripcion: e.observaciones || '',
     })
     setEditCategoriaNominaOriginalId(usaProfesor ? (e.categoria_id || null) : null)
@@ -498,6 +520,11 @@ export default function OperacionesEgresos() {
       setMensaje('❌ No existe la categoría "Gastos Administrativos" para imputar Servicios.')
       return
     }
+
+    if (categoriaEsServiciosUi(formData.categoria_id) && formData.contabilizacion_destino === 'operativo' && !categoriaGastosOperativos?.id) {
+      setMensaje('❌ No existe la categoría "Gastos Operativos Varios" para imputar Servicios.')
+      return
+    }
     if (mostrarProveedor && formData.proveedor_id === PROVEEDOR_OTROS && !formData.proveedor_otro.trim()) {
       setMensaje('❌ Escribe el proveedor cuando selecciones "Otros"')
       return
@@ -556,7 +583,9 @@ export default function OperacionesEgresos() {
         }
         mensajeExito = '✅ Egreso actualizado conservando la imputación interna de nómina'
       } else if (categoriaEsServiciosUi(formData.categoria_id)) {
-        categoriaIdActualizar = categoriaGastosAdministrativos?.id || ''
+        categoriaIdActualizar = formData.contabilizacion_destino === 'operativo'
+          ? (categoriaGastosOperativos?.id || '')
+          : (categoriaGastosAdministrativos?.id || '')
       }
 
       const { error } = await updateEgreso(editId, { ...payloadBase, categoria_id: categoriaIdActualizar }).then(r => ({ error: r.error }))
@@ -606,7 +635,11 @@ export default function OperacionesEgresos() {
       }
 
       const categoriaIdNueva = categoriaEsServiciosUi(formData.categoria_id)
-        ? (categoriaGastosAdministrativos?.id || '')
+        ? (
+          formData.contabilizacion_destino === 'operativo'
+            ? (categoriaGastosOperativos?.id || '')
+            : (categoriaGastosAdministrativos?.id || '')
+        )
         : formData.categoria_id
 
       const res = await createEgreso({ ...payloadBase, categoria_id: categoriaIdNueva, created_at: new Date().toISOString() })
@@ -819,6 +852,9 @@ export default function OperacionesEgresos() {
                         proveedor_id: puedeSeleccionarProveedor ? formData.proveedor_id : '',
                         proveedor_otro: puedeSeleccionarProveedor ? formData.proveedor_otro : '',
                         profesor_id: puedeSeleccionarProfesor ? formData.profesor_id : '',
+                        contabilizacion_destino: categoriaEsServiciosUi(categoriaId)
+                          ? formData.contabilizacion_destino
+                          : 'administrativo',
                       })
                     }}
                     className="w-full bg-transparent outline-none text-sm font-bold text-black"
@@ -864,7 +900,15 @@ export default function OperacionesEgresos() {
                     onChange={e => setFormData({
                       ...formData,
                       proveedor_id: e.target.value,
-                      proveedor_otro: e.target.value === PROVEEDOR_OTROS ? formData.proveedor_otro : ''
+                      proveedor_otro: e.target.value === PROVEEDOR_OTROS ? formData.proveedor_otro : '',
+                      contabilizacion_destino: categoriaEsServiciosUi(formData.categoria_id)
+                        ? ((() => {
+                          if (!e.target.value || e.target.value === PROVEEDOR_OTROS) {
+                            return 'administrativo'
+                          }
+                          return proveedoresById.get(e.target.value) || 'administrativo'
+                        })())
+                        : formData.contabilizacion_destino,
                     })}
                     className="mt-2 w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none"
                   >
@@ -892,6 +936,20 @@ export default function OperacionesEgresos() {
                 </label>
               )}
             </div>
+
+            {mostrarContabilizacionProveedor && (
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-[0.2em] text-gray-400 font-black">Contabilizar en</span>
+                <select
+                  value={formData.contabilizacion_destino}
+                  onChange={e => setFormData({ ...formData, contabilizacion_destino: e.target.value as 'administrativo' | 'operativo' })}
+                  className="mt-2 w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none"
+                >
+                  <option value="administrativo">Gastos Administrativos</option>
+                  <option value="operativo">Gastos Operativos</option>
+                </select>
+              </label>
+            )}
 
             {mostrarProfesor && (
               <label className="block">
