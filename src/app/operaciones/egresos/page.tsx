@@ -42,10 +42,13 @@ const getPeriodoEtiqueta = (periodo?: Partial<PeriodoOption> | null) => (
 
 const PROVEEDOR_OTROS = '__otros__'
 const CATEGORIA_NOMINA_UI = '__pago_nomina_ui__'
+const CATEGORIA_SERVICIOS_UI = '__servicios_ui__'
 const CATEGORIAS_CON_PROVEEDOR = ['inventario', 'suministro', 'uniforme']
 const CATEGORIAS_CON_PROFESOR = ['nomina base', 'nomina extra']
 const CATEGORIA_TRANSFERENCIA_INTERNA = 'transferencia interna'
 const PERIODO_NOMINA_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/
+const CATEGORIAS_OCULTAS_UI = ['eventos de promocion / banners', 'publicidad digital (ads)']
+const CATEGORIA_GASTOS_ADMINISTRATIVOS = 'gastos administrativos'
 const EGRESOS_POR_PAGINA = 12
 
 const getPeriodoYmFromDate = (value?: string | null) => {
@@ -74,6 +77,7 @@ const categoriaUsaProfesor = (nombreCategoria: string) => {
 const categoriaEsNominaBase = (nombreCategoria: string) => normalizarTexto(nombreCategoria).includes('nomina base')
 const categoriaEsNominaExtra = (nombreCategoria: string) => normalizarTexto(nombreCategoria).includes('nomina extra')
 const categoriaEsNominaUi = (categoriaId: string) => categoriaId === CATEGORIA_NOMINA_UI
+const categoriaEsServiciosUi = (categoriaId: string) => categoriaId === CATEGORIA_SERVICIOS_UI
 
 const getCategoriaNombreUi = (nombreCategoria: string) => {
   if (categoriaUsaProfesor(nombreCategoria)) return 'Pago Nómina'
@@ -90,6 +94,11 @@ const roundMoney = (value: number) => Math.round(value * 100) / 100
 
 const categoriaEsTransferenciaInterna = (nombreCategoria: string) => {
   return normalizarTexto(nombreCategoria) === CATEGORIA_TRANSFERENCIA_INTERNA
+}
+
+const categoriaOcultaEnUi = (nombreCategoria: string) => {
+  const normalizada = normalizarTexto(nombreCategoria)
+  return CATEGORIAS_OCULTAS_UI.some((value) => normalizarTexto(value) === normalizada)
 }
 
 const getProfesorNombre = (nombres?: string, apellidos?: string) => {
@@ -280,10 +289,17 @@ export default function OperacionesEgresos() {
   }
 
   const categoriaActual = useMemo(
-    () => categoriaEsNominaUi(formData.categoria_id)
-      ? 'Pago Nómina'
-      : (categorias.find(categoria => categoria.id === formData.categoria_id)?.nombre || ''),
+    () => {
+      if (categoriaEsNominaUi(formData.categoria_id)) return 'Pago Nómina'
+      if (categoriaEsServiciosUi(formData.categoria_id)) return 'Servicios'
+      return categorias.find(categoria => categoria.id === formData.categoria_id)?.nombre || ''
+    },
     [categorias, formData.categoria_id]
+  )
+
+  const categoriaGastosAdministrativos = useMemo(
+    () => categorias.find((categoria) => normalizarTexto(categoria.nombre || '') === CATEGORIA_GASTOS_ADMINISTRATIVOS) || null,
+    [categorias]
   )
 
   const nominaCategorias = useMemo(() => {
@@ -298,12 +314,21 @@ export default function OperacionesEgresos() {
 
     for (const categoria of categorias) {
       const nombre = categoria.nombre || ''
+
+      if (categoriaOcultaEnUi(nombre)) {
+        continue
+      }
+
       if (categoriaUsaProfesor(nombre)) {
         if (!nominaAgregada) {
           items.push({ id: CATEGORIA_NOMINA_UI, nombre: 'Pago Nómina' })
           nominaAgregada = true
         }
         continue
+      }
+
+      if (normalizarTexto(nombre) === CATEGORIA_GASTOS_ADMINISTRATIVOS) {
+        items.push({ id: CATEGORIA_SERVICIOS_UI, nombre: 'Servicios' })
       }
 
       items.push({ id: categoria.id, nombre })
@@ -313,7 +338,7 @@ export default function OperacionesEgresos() {
   }, [categorias])
 
   const mostrarProveedor = useMemo(
-    () => !categoriaEsNominaUi(formData.categoria_id) && categoriaUsaProveedor(categoriaActual),
+    () => !categoriaEsNominaUi(formData.categoria_id) && (categoriaEsServiciosUi(formData.categoria_id) || categoriaUsaProveedor(categoriaActual)),
     [categoriaActual]
   )
 
@@ -468,6 +493,11 @@ export default function OperacionesEgresos() {
       setMensaje('❌ Selecciona categoria y cuenta')
       return
     }
+
+    if (categoriaEsServiciosUi(formData.categoria_id) && !categoriaGastosAdministrativos?.id) {
+      setMensaje('❌ No existe la categoría "Gastos Administrativos" para imputar Servicios.')
+      return
+    }
     if (mostrarProveedor && formData.proveedor_id === PROVEEDOR_OTROS && !formData.proveedor_otro.trim()) {
       setMensaje('❌ Escribe el proveedor cuando selecciones "Otros"')
       return
@@ -525,6 +555,8 @@ export default function OperacionesEgresos() {
           return
         }
         mensajeExito = '✅ Egreso actualizado conservando la imputación interna de nómina'
+      } else if (categoriaEsServiciosUi(formData.categoria_id)) {
+        categoriaIdActualizar = categoriaGastosAdministrativos?.id || ''
       }
 
       const { error } = await updateEgreso(editId, { ...payloadBase, categoria_id: categoriaIdActualizar }).then(r => ({ error: r.error }))
@@ -573,7 +605,11 @@ export default function OperacionesEgresos() {
         return
       }
 
-      const res = await createEgreso({ ...payloadBase, categoria_id: formData.categoria_id, created_at: new Date().toISOString() })
+      const categoriaIdNueva = categoriaEsServiciosUi(formData.categoria_id)
+        ? (categoriaGastosAdministrativos?.id || '')
+        : formData.categoria_id
+
+      const res = await createEgreso({ ...payloadBase, categoria_id: categoriaIdNueva, created_at: new Date().toISOString() })
       if (res.error) setMensaje(`❌ ${getErrorText(res.error)}`)
       else {
         setMensaje('✅ Egreso registrado')
