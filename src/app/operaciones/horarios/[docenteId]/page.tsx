@@ -846,13 +846,16 @@ export default function OperacionesHorarioDocentePage() {
                         {blocks.map((block) => {
                           const blockColor = colegioColorById.get(block.colegioId) || '#e5e7eb'
                           const isSelected = block.id === selectedBlockId
+                          const isCompactBlock = block.durationSlots <= 1
+                          const compactLabel = (block.title || '').trim() || blockTimeLabel(block)
 
                           return (
                             <div
                               key={block.id}
                               onMouseDown={(event) => startInteraction(event, block, 'move')}
                               onClick={() => setSelectedBlockId(block.id)}
-                              className={`absolute z-20 cursor-move rounded-lg border px-2 py-1 text-center shadow-sm ${isSelected ? 'border-black ring-1 ring-black' : 'border-gray-400'} flex flex-col items-center justify-center`}
+                              title={block.title ? `${block.title} | ${blockTimeLabel(block)}` : blockTimeLabel(block)}
+                              className={`absolute z-20 cursor-move rounded-lg border px-2 py-1 text-center shadow-sm ${isSelected ? 'border-black ring-1 ring-black' : 'border-gray-400'} flex flex-col items-center justify-center overflow-hidden`}
                               style={{
                                 left: `calc(${(block.dayIndex * 100) / DAYS.length}% + 4px)`,
                                 width: `calc(${100 / DAYS.length}% - 8px)`,
@@ -866,16 +869,24 @@ export default function OperacionesHorarioDocentePage() {
                                 onMouseDown={(event) => startInteraction(event, block, 'resize-start')}
                               />
 
-                              <p className="text-[10px] font-semibold text-gray-700">{blockTimeLabel(block)}</p>
+                              {isCompactBlock ? (
+                                <p className="w-full truncate px-1 text-[10px] font-extrabold leading-none text-black">
+                                  {compactLabel}
+                                </p>
+                              ) : (
+                                <>
+                                  <p className="text-[10px] font-semibold text-gray-700">{blockTimeLabel(block)}</p>
 
-                              <input
-                                value={block.title}
-                                onChange={(event) => updateBlock(block.id, { title: event.target.value })}
-                                onMouseDown={(event) => event.stopPropagation()}
-                                onClick={(event) => event.stopPropagation()}
-                                placeholder="Escribe nombre"
-                                className="mt-1 w-full border-none bg-transparent p-0 text-center text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
-                              />
+                                  <input
+                                    value={block.title}
+                                    onChange={(event) => updateBlock(block.id, { title: event.target.value })}
+                                    onMouseDown={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                    placeholder="Escribe nombre"
+                                    className="mt-1 w-full border-none bg-transparent p-0 text-center text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
+                                  />
+                                </>
+                              )}
 
                               <div
                                 className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"
