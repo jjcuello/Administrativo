@@ -1,7 +1,6 @@
 'use client'
 
 import Image from 'next/image'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Clock3, GripVertical, Save, Trash2, User } from 'lucide-react'
@@ -82,6 +81,9 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(val
 
 const makeId = () => `blk_${Date.now()}_${Math.floor(Math.random() * 99999)}`
 const makeArrivalId = (dayIndex: number) => `arr_${dayIndex}`
+const buildSnapshot = (blocks: ScheduleBlock[], arrivalMarkers: ArrivalMarker[], notes: string) => (
+  JSON.stringify({ blocks, arrivalMarkers, notes })
+)
 
 const buildDefaultArrivalMarkers = (): ArrivalMarker[] => (
   DAYS.map((_, dayIndex) => ({
@@ -214,6 +216,7 @@ export default function OperacionesHorarioDocentePage() {
   const [selectedArrivalId, setSelectedArrivalId] = useState<string | null>(null)
   const [selectedTemplateColegioId, setSelectedTemplateColegioId] = useState<string | null>(null)
   const [interaction, setInteraction] = useState<InteractionState | null>(null)
+  const [baselineSnapshot, setBaselineSnapshot] = useState('')
 
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState('')
@@ -229,18 +232,16 @@ export default function OperacionesHorarioDocentePage() {
     return map
   }, [colegios])
 
-  const colegioAliasById = useMemo(() => {
-    const map = new Map<string, string>()
-    colegios.forEach((colegio, index) => {
-      map.set(colegio.id, `Color ${index + 1}`)
-    })
-    map.set('sin-colegio', 'Sin color')
-    return map
-  }, [colegios])
-
   const getArrivalSlotForDay = (markers: ArrivalMarker[], dayIndex: number) => (
     markers.find((marker) => marker.dayIndex === dayIndex)?.startSlot ?? 0
   )
+
+  const currentSnapshot = useMemo(
+    () => buildSnapshot(blocks, arrivalMarkers, notes),
+    [arrivalMarkers, blocks, notes]
+  )
+
+  const hasUnsavedChanges = baselineSnapshot !== '' && currentSnapshot !== baselineSnapshot
 
   const selectedBlock = useMemo(
     () => blocks.find((item) => item.id === selectedBlockId) || null,
@@ -350,6 +351,7 @@ export default function OperacionesHorarioDocentePage() {
         setBlocks(parsed.blocks)
         setArrivalMarkers(parsed.arrivalMarkers)
         setNotes(parsed.notes)
+        setBaselineSnapshot(buildSnapshot(parsed.blocks, parsed.arrivalMarkers, parsed.notes))
         setSelectedBlockId(parsed.blocks[0]?.id || null)
         setSelectedArrivalId(null)
         setCargando(false)
@@ -376,6 +378,7 @@ export default function OperacionesHorarioDocentePage() {
       setBlocks(parsed.blocks)
       setArrivalMarkers(parsed.arrivalMarkers)
       setNotes(parsed.notes)
+      setBaselineSnapshot(buildSnapshot(parsed.blocks, parsed.arrivalMarkers, parsed.notes))
       setSelectedBlockId(parsed.blocks[0]?.id || null)
       setSelectedArrivalId(null)
       setCargando(false)
@@ -387,6 +390,19 @@ export default function OperacionesHorarioDocentePage() {
       active = false
     }
   }, [docenteId])
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+    }
+  }, [hasUnsavedChanges])
 
   useEffect(() => {
     if (!interaction) return
@@ -541,11 +557,31 @@ export default function OperacionesHorarioDocentePage() {
     if (error) {
       setMensajeGuardado('No se pudo guardar el horario.')
       setGuardando(false)
-      return
+      return false
     }
 
     setMensajeGuardado('Horario guardado con exito.')
+    setBaselineSnapshot(currentSnapshot)
     setGuardando(false)
+    return true
+  }
+
+  const navigateWithUnsavedCheck = async (targetPath: string) => {
+    if (!hasUnsavedChanges) {
+      router.push(targetPath)
+      return
+    }
+
+    const shouldSaveBeforeExit = window.confirm(
+      'Tienes cambios sin guardar. Presiona Aceptar para guardar antes de salir o Cancelar para salir sin guardar.'
+    )
+
+    if (shouldSaveBeforeExit) {
+      const saved = await saveHorario()
+      if (!saved) return
+    }
+
+    router.push(targetPath)
   }
 
   const handleTemplateDragStart = (event: React.DragEvent<HTMLButtonElement>, colegioId: string) => {
@@ -662,17 +698,17 @@ export default function OperacionesHorarioDocentePage() {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={() => router.push('/operaciones/horarios')}
+              onClick={() => { void navigateWithUnsavedCheck('/operaciones/horarios') }}
               className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-600 shadow-sm transition-all hover:border-black hover:text-black"
             >
               <ArrowLeft size={14} /> Volver a horarios
             </button>
-            <Link
-              href="/operaciones"
+            <button
+              onClick={() => { void navigateWithUnsavedCheck('/operaciones') }}
               className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-5 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-gray-600 shadow-sm transition-all hover:border-black hover:text-black"
             >
               <ArrowLeft size={14} /> Volver a operaciones
-            </Link>
+            </button>
           </div>
         </header>
 
@@ -707,10 +743,10 @@ export default function OperacionesHorarioDocentePage() {
                       onClick={addBlock}
                       className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-gray-700 transition-all hover:border-black hover:text-black"
                     >
-                      Agregar bloque
+                      Agregar clase
                     </button>
                     <button
-                      onClick={saveHorario}
+                      onClick={() => { void saveHorario() }}
                       disabled={guardando}
                       className="inline-flex items-center gap-2 rounded-xl bg-black px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-white transition-all hover:bg-gray-900 disabled:opacity-60"
                     >
@@ -830,7 +866,7 @@ export default function OperacionesHorarioDocentePage() {
 
                               <div className="mb-1 flex items-center gap-1">
                                 <GripVertical size={12} className="text-gray-600" />
-                                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-700">Bloque</span>
+                                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-700">Clase</span>
                               </div>
 
                               <p className="text-[10px] font-semibold text-gray-700">{blockTimeLabel(block)}</p>
@@ -838,6 +874,8 @@ export default function OperacionesHorarioDocentePage() {
                               <input
                                 value={block.title}
                                 onChange={(event) => updateBlock(block.id, { title: event.target.value })}
+                                onMouseDown={(event) => event.stopPropagation()}
+                                onClick={(event) => event.stopPropagation()}
                                 placeholder="Escribe nombre"
                                 className="mt-1 w-full border-none bg-transparent p-0 text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
                               />
@@ -857,17 +895,17 @@ export default function OperacionesHorarioDocentePage() {
 
               <aside className="rounded-2xl border border-gray-200 bg-white p-4">
                 <div className="mb-4 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-gray-500">
-                  <User size={14} /> Editor de bloque
+                  <User size={14} /> Editor de clase
                 </div>
 
                 {!selectedBlock ? (
                   <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-500">
-                    Selecciona un bloque para editar su colegio y su nombre.
+                    Selecciona una clase para editar su colegio y su nombre.
                   </p>
                 ) : (
                   <div className="space-y-4">
                     <div>
-                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">Nombre del bloque</label>
+                      <label className="mb-1 block text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">Nombre de la clase</label>
                       <input
                         value={selectedBlock.title}
                         onChange={(event) => updateBlock(selectedBlock.id, { title: event.target.value })}
@@ -884,7 +922,7 @@ export default function OperacionesHorarioDocentePage() {
                       >
                         <option value="sin-colegio">Sin colegio</option>
                         {colegios.map((colegio) => (
-                          <option key={colegio.id} value={colegio.id}>{colegioAliasById.get(colegio.id) || 'Color'}</option>
+                          <option key={colegio.id} value={colegio.id}>{colegio.nombre}</option>
                         ))}
                       </select>
                     </div>
@@ -898,7 +936,7 @@ export default function OperacionesHorarioDocentePage() {
                       onClick={deleteSelectedBlock}
                       className="inline-flex items-center gap-2 rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-red-700 transition-all hover:border-red-500"
                     >
-                      <Trash2 size={14} /> Eliminar bloque
+                      <Trash2 size={14} /> Eliminar clase
                     </button>
                   </div>
                 )}
@@ -933,7 +971,7 @@ export default function OperacionesHorarioDocentePage() {
                           style={{ backgroundColor: color }}
                         >
                           <span className="h-3 w-3 rounded-full border border-gray-400 bg-white/70" />
-                          <span>{colegioAliasById.get(colegio.id) || 'Color'}</span>
+                          <span>{colegio.nombre}</span>
                         </button>
                       )
                     })}
