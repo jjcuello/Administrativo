@@ -57,16 +57,17 @@ const START_MINUTES = 6 * 60 + 45
 const END_MINUTES = 15 * 60 + 30
 const SLOT_MINUTES = 15
 const SLOT_COUNT = Math.round((END_MINUTES - START_MINUTES) / SLOT_MINUTES)
+const DEPARTURE_SLOT = SLOT_COUNT - 1
 const SLOT_HEIGHT = 26
 
 const COLOR_PALETTE = [
-  '#dbeafe',
-  '#fef3c7',
-  '#dcfce7',
-  '#fee2e2',
-  '#ede9fe',
-  '#cffafe',
-  '#fde68a',
+  '#93c5fd',
+  '#fcd34d',
+  '#86efac',
+  '#fca5a5',
+  '#c4b5fd',
+  '#67e8f9',
+  '#fbbf24',
 ]
 
 const normalizeText = (value: string) => (
@@ -224,9 +225,22 @@ export default function OperacionesHorarioDocentePage() {
     colegios.forEach((colegio) => {
       map.set(colegio.id, colorFromId(colegio.id))
     })
-    map.set('sin-colegio', '#e5e7eb')
+    map.set('sin-colegio', '#cbd5e1')
     return map
   }, [colegios])
+
+  const colegioAliasById = useMemo(() => {
+    const map = new Map<string, string>()
+    colegios.forEach((colegio, index) => {
+      map.set(colegio.id, `Color ${index + 1}`)
+    })
+    map.set('sin-colegio', 'Sin color')
+    return map
+  }, [colegios])
+
+  const getArrivalSlotForDay = (markers: ArrivalMarker[], dayIndex: number) => (
+    markers.find((marker) => marker.dayIndex === dayIndex)?.startSlot ?? 0
+  )
 
   const selectedBlock = useMemo(
     () => blocks.find((item) => item.id === selectedBlockId) || null,
@@ -241,16 +255,14 @@ export default function OperacionesHorarioDocentePage() {
     }
 
     return Array.from(totals.entries()).map(([colegioId, minutes]) => {
-      const colegio = colegios.find((item) => item.id === colegioId)
-      const nombre = colegio?.nombre || (colegioId === 'sin-colegio' ? 'Sin colegio' : 'Colegio')
       const color = colegioColorById.get(colegioId) || '#e5e7eb'
       const horas = Math.floor(minutes / 60)
       const mins = minutes % 60
       const horasLabel = `${horas}h ${String(mins).padStart(2, '0')}m`
 
-      return { colegioId, nombre, color, horasLabel }
+      return { colegioId, color, horasLabel }
     })
-  }, [blocks, colegios, colegioColorById])
+  }, [blocks, colegioColorById])
 
   useEffect(() => {
     let active = true
@@ -387,13 +399,27 @@ export default function OperacionesHorarioDocentePage() {
       const deltaSlots = Math.round((event.clientY - interaction.startY) / SLOT_HEIGHT)
 
       if (interaction.targetType === 'arrival') {
-        const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, SLOT_COUNT - 1)
+        const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, SLOT_COUNT - 2)
+        const fixedDayIndex = interaction.originalDayIndex
         setArrivalMarkers((prev) => prev.map((marker) => {
           if (marker.id !== interaction.itemId) return marker
           return {
             ...marker,
-            dayIndex: pointerDay,
+            dayIndex: fixedDayIndex,
             startSlot: nextStart,
+          }
+        }))
+
+        setBlocks((prev) => prev.map((block) => {
+          if (block.dayIndex !== fixedDayIndex) return block
+
+          const maxDuration = Math.max(1, DEPARTURE_SLOT - nextStart)
+          const nextDuration = clamp(block.durationSlots, 1, maxDuration)
+          const nextStartSlot = clamp(block.startSlot, nextStart, DEPARTURE_SLOT - nextDuration)
+          return {
+            ...block,
+            startSlot: nextStartSlot,
+            durationSlots: nextDuration,
           }
         }))
         return
@@ -402,20 +428,26 @@ export default function OperacionesHorarioDocentePage() {
       setBlocks((prev) => prev.map((block) => {
         if (block.id !== interaction.itemId) return block
 
+        const dayIndexForBounds = interaction.mode === 'move' ? pointerDay : block.dayIndex
+        const arrivalSlot = getArrivalSlotForDay(arrivalMarkers, dayIndexForBounds)
+        const availableSlots = Math.max(1, DEPARTURE_SLOT - arrivalSlot)
+
         if (interaction.mode === 'move') {
-          const nextDuration = interaction.originalDurationSlots
-          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, SLOT_COUNT - nextDuration)
+          const nextDuration = clamp(interaction.originalDurationSlots, 1, availableSlots)
+          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, arrivalSlot, DEPARTURE_SLOT - nextDuration)
           return {
             ...block,
             dayIndex: pointerDay,
             startSlot: nextStart,
+            durationSlots: nextDuration,
           }
         }
 
         if (interaction.mode === 'resize-start') {
+          const originalEnd = Math.min(interaction.originalStartSlot + interaction.originalDurationSlots, DEPARTURE_SLOT)
           const maxStart = interaction.originalStartSlot + interaction.originalDurationSlots - 1
-          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, maxStart)
-          const nextDuration = clamp(interaction.originalDurationSlots - (nextStart - interaction.originalStartSlot), 1, SLOT_COUNT - nextStart)
+          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, arrivalSlot, maxStart)
+          const nextDuration = clamp(originalEnd - nextStart, 1, DEPARTURE_SLOT - nextStart)
           return {
             ...block,
             startSlot: nextStart,
@@ -423,7 +455,8 @@ export default function OperacionesHorarioDocentePage() {
           }
         }
 
-        const nextDuration = clamp(interaction.originalDurationSlots + deltaSlots, 1, SLOT_COUNT - interaction.originalStartSlot)
+        const maxDuration = Math.max(1, DEPARTURE_SLOT - interaction.originalStartSlot)
+        const nextDuration = clamp(interaction.originalDurationSlots + deltaSlots, 1, maxDuration)
         return {
           ...block,
           durationSlots: nextDuration,
@@ -442,16 +475,20 @@ export default function OperacionesHorarioDocentePage() {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [interaction])
+  }, [arrivalMarkers, interaction])
 
   const addBlock = () => {
     const fallbackColegioId = colegios[0]?.id || 'sin-colegio'
+    const dayIndex = 0
+    const arrivalSlot = getArrivalSlotForDay(arrivalMarkers, dayIndex)
+    const availableSlots = Math.max(1, DEPARTURE_SLOT - arrivalSlot)
+    const durationSlots = clamp(4, 1, availableSlots)
     const nextBlock: ScheduleBlock = {
       id: makeId(),
-      dayIndex: 0,
-      startSlot: 1,
-      durationSlots: 4,
-      title: 'Nueva clase',
+      dayIndex,
+      startSlot: arrivalSlot,
+      durationSlots,
+      title: '',
       colegioId: fallbackColegioId,
     }
 
@@ -523,15 +560,17 @@ export default function OperacionesHorarioDocentePage() {
 
     const dayWidth = rect.width / DAYS.length
     const dayIndex = clamp(Math.floor((clientX - rect.left) / dayWidth), 0, DAYS.length - 1)
-    const slot = clamp(Math.floor((clientY - rect.top) / SLOT_HEIGHT), 0, SLOT_COUNT - 1)
+    const arrivalSlot = getArrivalSlotForDay(arrivalMarkers, dayIndex)
+    const maxDuration = Math.max(1, DEPARTURE_SLOT - arrivalSlot)
+    const durationSlots = clamp(4, 1, maxDuration)
+    const slot = clamp(Math.floor((clientY - rect.top) / SLOT_HEIGHT), arrivalSlot, DEPARTURE_SLOT - durationSlots)
 
-    const colegioNombre = colegios.find((item) => item.id === colegioId)?.nombre || 'Clase'
     const nextBlock: ScheduleBlock = {
       id: makeId(),
       dayIndex,
       startSlot: slot,
-      durationSlots: 4,
-      title: colegioNombre,
+      durationSlots,
+      title: '',
       colegioId,
     }
 
@@ -650,7 +689,6 @@ export default function OperacionesHorarioDocentePage() {
                 ) : resumenColegios.map((item) => (
                   <div key={item.colegioId} className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700">
                     <span className="h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: item.color }} />
-                    <span>{item.nombre}</span>
                     <span className="text-gray-400">{item.horasLabel}</span>
                   </div>
                 ))}
@@ -740,7 +778,7 @@ export default function OperacionesHorarioDocentePage() {
                               setSelectedArrivalId(marker.id)
                               setSelectedBlockId(null)
                             }}
-                            className={`absolute z-20 rounded-md border px-2 py-0.5 text-[10px] font-bold text-blue-700 cursor-move ${selectedArrivalId === marker.id ? 'border-blue-700 ring-1 ring-blue-700 bg-blue-200' : 'border-blue-300 bg-blue-100'}`}
+                            className={`absolute z-20 cursor-move rounded-md border px-2 py-0.5 text-[10px] font-bold text-blue-900 ${selectedArrivalId === marker.id ? 'border-blue-800 ring-1 ring-blue-900 bg-blue-300' : 'border-blue-700 bg-blue-200'}`}
                             style={{
                               left: `calc(${(marker.dayIndex * 100) / DAYS.length}% + 4px)`,
                               width: `calc(${100 / DAYS.length}% - 8px)`,
@@ -792,14 +830,17 @@ export default function OperacionesHorarioDocentePage() {
 
                               <div className="mb-1 flex items-center gap-1">
                                 <GripVertical size={12} className="text-gray-600" />
-                                <input
-                                  value={block.title}
-                                  onChange={(event) => updateBlock(block.id, { title: event.target.value })}
-                                  className="w-full border-none bg-transparent p-0 text-[11px] font-bold text-black outline-none"
-                                />
+                                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-gray-700">Bloque</span>
                               </div>
 
                               <p className="text-[10px] font-semibold text-gray-700">{blockTimeLabel(block)}</p>
+
+                              <input
+                                value={block.title}
+                                onChange={(event) => updateBlock(block.id, { title: event.target.value })}
+                                placeholder="Escribe nombre"
+                                className="mt-1 w-full border-none bg-transparent p-0 text-[10px] font-bold text-black outline-none placeholder:text-gray-600"
+                              />
 
                               <div
                                 className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"
@@ -843,7 +884,7 @@ export default function OperacionesHorarioDocentePage() {
                       >
                         <option value="sin-colegio">Sin colegio</option>
                         {colegios.map((colegio) => (
-                          <option key={colegio.id} value={colegio.id}>{colegio.nombre}</option>
+                          <option key={colegio.id} value={colegio.id}>{colegioAliasById.get(colegio.id) || 'Color'}</option>
                         ))}
                       </select>
                     </div>
@@ -892,7 +933,7 @@ export default function OperacionesHorarioDocentePage() {
                           style={{ backgroundColor: color }}
                         >
                           <span className="h-3 w-3 rounded-full border border-gray-400 bg-white/70" />
-                          <span>{colegio.nombre}</span>
+                          <span>{colegioAliasById.get(colegio.id) || 'Color'}</span>
                         </button>
                       )
                     })}
