@@ -148,6 +148,9 @@ export default function OperacionesHorarios() {
                 <Link href="/operaciones/horarios" className="px-4 py-2 rounded-xl bg-black text-white font-black">
                   Horarios
                 </Link>
+                <Link href="/gestion/proveedores" className="px-4 py-2 rounded-xl text-gray-500 hover:text-black font-black transition-all">
+                  Proveedores
+                </Link>
               </div>
             </div>
           </div>

@@ -440,6 +440,9 @@ export default function OperacionesIngresos() {
             <Link href="/operaciones/horarios" className="px-4 py-2 rounded-xl text-gray-500 hover:text-black font-black transition-all">
               Horarios
             </Link>
+            <Link href="/gestion/proveedores" className="px-4 py-2 rounded-xl text-gray-500 hover:text-black font-black transition-all">
+              Proveedores
+            </Link>
           </div>
 
           <div className="mt-4 inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2 text-[10px] uppercase tracking-widest text-gray-500 shadow-sm">
