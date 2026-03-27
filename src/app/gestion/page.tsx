@@ -63,7 +63,7 @@ export default function GestionDashboard() {
   const esOperador = roleCode === 'operador'
   const puedeGestionPersonal = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
   const puedeGestionClientes = roleCode === 'admin' || esOperador
-  const puedeGestionProveedores = roleCode === 'admin' || esOperador
+  const puedeGestionProveedores = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
   const puedeGestionNomina = roleCode === 'admin' || esOperador
   const puedeGestionSocios = roleCode === 'admin' || esOperador
   const puedeGestionOperaciones = roleCode === 'admin' || roleCode === 'operativo' || esOperador
@@ -196,7 +196,7 @@ export default function GestionDashboard() {
               )}
               {esGestionPersonal && !cargandoRol && (
                 <p className="mt-2 max-w-2xl text-xs font-bold uppercase tracking-[0.12em] text-gray-500">
-                  Modo gestión personal: solo Manejo del Personal habilitado.
+                  Modo gestión personal: Manejo del Personal y Proveedores habilitados.
                 </p>
               )}
               {esOperador && !cargandoRol && (

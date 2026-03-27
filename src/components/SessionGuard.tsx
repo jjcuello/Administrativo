@@ -54,6 +54,7 @@ const ROLE_ACCESS_RULES: Record<RoleCode, AccessRule[]> = {
     { type: 'exact', path: '/gestion' },
     { type: 'prefix', path: '/gestion/socios/agente' },
     { type: 'prefix', path: '/gestion/personal' },
+    { type: 'prefix', path: '/gestion/proveedores' },
   ],
   operador: [
     { type: 'prefix', path: '/gestion' },
