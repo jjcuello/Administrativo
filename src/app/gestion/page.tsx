@@ -42,7 +42,7 @@ export default function GestionDashboard() {
         if (nextRole === 'admin' || nextRole === 'operativo' || nextRole === 'consulta' || nextRole === 'gestion_personal' || nextRole === 'operador' || nextRole === 'horario') {
           setRoleCode(nextRole)
         } else {
-          setRoleCode('admin')
+          setRoleCode('consulta')
         }
       } finally {
         if (activo) {

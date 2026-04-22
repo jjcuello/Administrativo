@@ -74,7 +74,7 @@ const normalizeRoleCode = (value?: string | null): RoleCode => {
     return value
   }
 
-  return 'admin'
+  return 'consulta'
 }
 
 const matchAccessRule = (pathname: string, rule: AccessRule) => {
