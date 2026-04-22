@@ -52,6 +52,9 @@ export default function GestionTardes() {
     setFormData({ nombre: '', sede_id: '', profesor_id: '', horario: '', tarifa_mensual: '', cupos_maximos: '' })
   }
 
+    const esCupoSinLimite = (cupos?: number | null) => Number(cupos || 0) <= 0
+    const formatearCupo = (cupos?: number | null) => (esCupoSinLimite(cupos) ? 'SIN LÍMITE' : String(cupos || 0))
+
   const cargarDatos = async (term?: string) => {
     setErrorCarga('')
     const { data: s, error: sedesErr } = await supabase.from('colegios').select('id, nombre, tipo').order('nombre')
@@ -154,7 +157,7 @@ export default function GestionTardes() {
       profesor_id: seleccionado.profesor_id || '',
       horario: seleccionado.horario || '',
       tarifa_mensual: seleccionado.tarifa_mensual ? String(seleccionado.tarifa_mensual) : '',
-      cupos_maximos: seleccionado.cupos_maximos ? String(seleccionado.cupos_maximos) : ''
+      cupos_maximos: seleccionado.cupos_maximos === 0 ? '0' : (seleccionado.cupos_maximos ? String(seleccionado.cupos_maximos) : '')
     })
     setVista('editar')
     setTimeout(() => nombreRef.current?.focus(), 200)
@@ -168,7 +171,7 @@ export default function GestionTardes() {
       profesor_id: g.profesor_id || '',
       horario: g.horario || '',
       tarifa_mensual: g.tarifa_mensual ? String(g.tarifa_mensual) : '',
-      cupos_maximos: g.cupos_maximos ? String(g.cupos_maximos) : ''
+      cupos_maximos: g.cupos_maximos === 0 ? '0' : (g.cupos_maximos ? String(g.cupos_maximos) : '')
     })
     setVista('editar')
     setTimeout(() => nombreRef.current?.focus(), 200)
@@ -184,7 +187,11 @@ export default function GestionTardes() {
 
   const gruposMostrados = filtroSede ? grupos.filter(g => g.sede_id === filtroSede) : grupos
   const totalGrupos = gruposMostrados.length
-  const totalCupos = gruposMostrados.reduce((acc, g) => acc + Number(g.cupos_maximos || 0), 0)
+  const totalCuposFinitos = gruposMostrados.reduce((acc, g) => {
+    const cupos = Number(g.cupos_maximos || 0)
+    return cupos > 0 ? acc + cupos : acc
+  }, 0)
+  const totalGruposSinLimite = gruposMostrados.filter((g) => esCupoSinLimite(g.cupos_maximos)).length
   const totalMensual = gruposMostrados.reduce((acc, g) => {
     const inscritos = g.id ? (inscritosPorGrupo[g.id] || 0) : 0
     return acc + Number(g.tarifa_mensual || 0) * inscritos
@@ -226,8 +233,12 @@ export default function GestionTardes() {
             <p className="text-lg font-black text-black">{totalGrupos}</p>
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl p-4">
-            <p className="text-gray-400 mb-1">Cupos disponibles</p>
-            <p className="text-lg font-black text-black">{totalCupos}</p>
+            <p className="text-gray-400 mb-1">Cupos finitos</p>
+            <p className="text-lg font-black text-black">{totalCuposFinitos}</p>
+          </div>
+          <div className="bg-white border border-gray-100 rounded-2xl p-4">
+            <p className="text-gray-400 mb-1">Grupos sin límite</p>
+            <p className="text-lg font-black text-black">{totalGruposSinLimite}</p>
           </div>
           <div className="bg-white border border-gray-100 rounded-2xl p-4">
             <p className="text-gray-400 mb-1">Monto mensual total</p>
@@ -315,7 +326,7 @@ export default function GestionTardes() {
               <input required placeholder="HORARIO" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none text-black" value={formData.horario} onChange={e => setFormData({...formData, horario: e.target.value})} />
               <div className="grid grid-cols-2 gap-4">
                 <input required type="number" step="0.01" placeholder="TARIFA $" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-black border-none text-black" value={formData.tarifa_mensual} onChange={e => setFormData({...formData, tarifa_mensual: e.target.value})} />
-                <input required type="number" placeholder="CUPOS MÁX" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-black border-none text-black" value={formData.cupos_maximos} onChange={e => setFormData({...formData, cupos_maximos: e.target.value})} />
+                <input required type="number" min="0" placeholder="CUPOS MÁX (0 = SIN LÍMITE)" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-black border-none text-black" value={formData.cupos_maximos} onChange={e => setFormData({...formData, cupos_maximos: e.target.value})} />
               </div>
             </div>
             <div className="flex gap-4">
@@ -342,9 +353,14 @@ export default function GestionTardes() {
                 <span className={`text-xl italic font-black tracking-tighter ${seleccionado?.id === g.id ? 'text-white' : 'text-black'}`}>${formatearMonto(g.tarifa_mensual)}</span>
               </div>
               <h4 className={`text-base font-black uppercase leading-tight mb-4 ${seleccionado?.id === g.id ? 'text-white' : 'text-black'}`}>{g.nombre}</h4>
+              {esCupoSinLimite(g.cupos_maximos) && (
+                <span className={`inline-flex mb-3 rounded-full px-3 py-1 text-[8px] font-black tracking-widest uppercase ${seleccionado?.id === g.id ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                  Sin limite
+                </span>
+              )}
               <div className="flex items-center gap-4 mb-4">
                 <p className={`text-[9px] font-black uppercase flex items-center gap-1 ${seleccionado?.id === g.id ? 'text-gray-300' : 'text-gray-500'}`}><Clock size={12}/> {g.horario}</p>
-                <p className={`text-[9px] font-black uppercase flex items-center gap-1 ${seleccionado?.id === g.id ? 'text-gray-300' : 'text-gray-500'}`}><Users size={12}/> {(g.id ? inscritosPorGrupo[g.id] || 0 : 0)} / {g.cupos_maximos}</p>
+                <p className={`text-[9px] font-black uppercase flex items-center gap-1 ${seleccionado?.id === g.id ? 'text-gray-300' : 'text-gray-500'}`}><Users size={12}/> {(g.id ? inscritosPorGrupo[g.id] || 0 : 0)} / {formatearCupo(g.cupos_maximos)}</p>
               </div>
               <div className="border-t border-gray-50 pt-4 flex justify-between items-end">
                 <div>

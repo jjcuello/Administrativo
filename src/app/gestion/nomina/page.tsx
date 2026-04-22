@@ -24,10 +24,13 @@ type GrupoNomina = 'docente' | 'administrativo'
 type AjusteNomina = {
   inasistencias: number
   cantina: number
+  otrasDeducciones: number
   extra: number
   comentario: string
   comentarioExtra: string
 }
+
+type AjusteMontoCampo = 'inasistencias' | 'cantina' | 'otrasDeducciones' | 'extra'
 
 type EstadoPagoNomina = 'pendiente' | 'saldado' | 'vencido'
 
@@ -40,6 +43,7 @@ type NominaRow = {
   base: number
   inasistencias: number
   cantina: number
+  otrasDeducciones: number
   extra: number
   comentario: string
   comentarioExtra: string
@@ -68,9 +72,19 @@ type NominaDetalleGuardado = {
   personal_id: string
   descuento_inasistencias: number | null
   descuento_cantina: number | null
+  descuento_otras?: number | null
   monto_extra?: number | null
   comentario_descuento: string | null
   comentario_extra?: string | null
+}
+
+const EMPTY_AJUSTE_NOMINA: AjusteNomina = {
+  inasistencias: 0,
+  cantina: 0,
+  otrasDeducciones: 0,
+  extra: 0,
+  comentario: '',
+  comentarioExtra: '',
 }
 
 type AbonoTipoNomina = 'base' | 'extra'
@@ -357,13 +371,14 @@ const isMissingColumnError = (error: unknown, columnName: string) => {
 const buildAjustesSnapshot = (personas: PersonalNomina[], ajustesMap: Record<string, AjusteNomina>) => {
   return personas
     .map((persona) => {
-      const ajuste = ajustesMap[persona.id] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }
+      const ajuste = ajustesMap[persona.id] || EMPTY_AJUSTE_NOMINA
       const inasistencias = roundMoney(getSafeMonto(ajuste.inasistencias))
       const cantina = roundMoney(getSafeMonto(ajuste.cantina))
+      const otrasDeducciones = roundMoney(getSafeMonto(ajuste.otrasDeducciones))
       const extra = roundMoney(getSafeMonto(ajuste.extra))
       const comentario = (ajuste.comentario || '').replace(/\s+/g, ' ').trim()
       const comentarioExtra = (ajuste.comentarioExtra || '').replace(/\s+/g, ' ').trim()
-      return `${persona.id}:${inasistencias}:${cantina}:${extra}:${comentario}:${comentarioExtra}`
+      return `${persona.id}:${inasistencias}:${cantina}:${otrasDeducciones}:${extra}:${comentario}:${comentarioExtra}`
     })
     .join('|')
 }
@@ -393,6 +408,7 @@ export default function GestionNominaPage() {
   const [loadingHistorial, setLoadingHistorial] = useState(false)
   const [abriendoNominaId, setAbriendoNominaId] = useState<string | null>(null)
   const [snapshotAjustesGuardados, setSnapshotAjustesGuardados] = useState('')
+  const [ajustesInputTemporal, setAjustesInputTemporal] = useState<Record<string, string>>({})
   const [editorExtraEmpleadoId, setEditorExtraEmpleadoId] = useState<string | null>(null)
   const [estadoCopiaLink, setEstadoCopiaLink] = useState<'idle' | 'ok' | 'error'>('idle')
   const autoSaveTimeoutRef = useRef<number | null>(null)
@@ -450,7 +466,7 @@ export default function GestionNominaPage() {
   const construirAjustesIniciales = (personas: PersonalNomina[]) => {
     const ajustesBase: Record<string, AjusteNomina> = {}
     for (const persona of personas) {
-      ajustesBase[persona.id] = { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }
+      ajustesBase[persona.id] = { ...EMPTY_AJUSTE_NOMINA }
     }
     return ajustesBase
   }
@@ -477,6 +493,7 @@ export default function GestionNominaPage() {
         ajustesConBorrador[personalId] = {
           inasistencias: getSafeMonto(ajuste.inasistencias ?? 0),
           cantina: getSafeMonto(ajuste.cantina ?? 0),
+          otrasDeducciones: getSafeMonto(ajuste.otrasDeducciones ?? 0),
           extra: getSafeMonto(ajuste.extra ?? 0),
           comentario: typeof ajuste.comentario === 'string' ? ajuste.comentario : '',
           comentarioExtra: typeof ajuste.comentarioExtra === 'string' ? ajuste.comentarioExtra : '',
@@ -531,11 +548,12 @@ export default function GestionNominaPage() {
   }
 
   const cargarDetalleNominaCompat = async (nominaId: string): Promise<CargaDetalleNominaResult> => {
+    const selectV50 = 'personal_id, descuento_inasistencias, descuento_cantina, descuento_otras, monto_extra, comentario_descuento, comentario_extra'
     const selectV24 = 'personal_id, descuento_inasistencias, descuento_cantina, monto_extra, comentario_descuento, comentario_extra'
 
     const { data, error } = await supabase
       .from('nominas_mensuales_detalle')
-      .select(selectV24)
+      .select(selectV50)
       .eq('nomina_id', nominaId)
 
     if (!error) {
@@ -546,12 +564,40 @@ export default function GestionNominaPage() {
       }
     }
 
+    const faltaColumnaOtras = isMissingColumnError(error, 'descuento_otras')
     const faltanColumnasExtras = isMissingColumnError(error, 'monto_extra') || isMissingColumnError(error, 'comentario_extra')
-    if (!faltanColumnasExtras) {
+
+    if (!faltaColumnaOtras && !faltanColumnasExtras) {
       return {
         detalle: [],
         warning: null,
         error: getErrorText(error, 'No se pudo abrir el detalle de la nómina guardada.'),
+      }
+    }
+
+    if (faltaColumnaOtras && !faltanColumnasExtras) {
+      const { data: v24Data, error: v24Error } = await supabase
+        .from('nominas_mensuales_detalle')
+        .select(selectV24)
+        .eq('nomina_id', nominaId)
+
+      if (v24Error) {
+        return {
+          detalle: [],
+          warning: null,
+          error: getErrorText(v24Error, 'No se pudo abrir el detalle de la nómina guardada.'),
+        }
+      }
+
+      const rows = ((v24Data as NominaDetalleGuardado[] | null) ?? []).map((row) => ({
+        ...row,
+        descuento_otras: 0,
+      }))
+
+      return {
+        detalle: rows,
+        warning: 'La BD aún no tiene la columna descuento_otras en detalle de nómina. Ejecuta la migración v50 para persistir Otras Deducciones.',
+        error: null,
       }
     }
 
@@ -577,6 +623,7 @@ export default function GestionNominaPage() {
       personal_id: row.personal_id,
       descuento_inasistencias: row.descuento_inasistencias,
       descuento_cantina: row.descuento_cantina,
+      descuento_otras: 0,
       comentario_descuento: row.comentario_descuento,
       monto_extra: 0,
       comentario_extra: '',
@@ -584,7 +631,7 @@ export default function GestionNominaPage() {
 
     return {
       detalle: legacyRows,
-      warning: 'La BD aún no tiene columnas de extras en detalle de nómina. Ejecuta la migración v24 para persistir extras.',
+      warning: 'La BD aún no tiene columnas recientes en detalle de nómina. Ejecuta las migraciones v24 (extras) y v50 (otras deducciones).',
       error: null,
     }
   }
@@ -998,6 +1045,7 @@ export default function GestionNominaPage() {
         ajustesIniciales[row.personal_id] = {
           inasistencias: getSafeMonto(row.descuento_inasistencias),
           cantina: getSafeMonto(row.descuento_cantina),
+          otrasDeducciones: getSafeMonto(row.descuento_otras),
           extra: getSafeMonto(row.monto_extra),
           comentario: (row.comentario_descuento || '').trim(),
           comentarioExtra: (row.comentario_extra || '').trim(),
@@ -1098,6 +1146,7 @@ export default function GestionNominaPage() {
         ajustesIniciales[row.personal_id] = {
           inasistencias: getSafeMonto(row.descuento_inasistencias),
           cantina: getSafeMonto(row.descuento_cantina),
+          otrasDeducciones: getSafeMonto(row.descuento_otras),
           extra: getSafeMonto(row.monto_extra),
           comentario: (row.comentario_descuento || '').trim(),
           comentarioExtra: (row.comentario_extra || '').trim(),
@@ -1153,14 +1202,17 @@ export default function GestionNominaPage() {
     const periodoVencido = Boolean(fechaLimitePago && Date.now() > fechaLimitePago.getTime())
 
     return personal.map((persona) => {
-      const ajuste = ajustes[persona.id] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }
+      const ajuste = ajustes[persona.id] || EMPTY_AJUSTE_NOMINA
       const base = getSafeMonto(persona.monto_base_mensual)
       const inasistencias = Math.max(ajuste.inasistencias || 0, 0)
       const cantina = Math.max(ajuste.cantina || 0, 0)
+      const otrasDeducciones = Math.max(ajuste.otrasDeducciones || 0, 0)
       const extra = Math.max(ajuste.extra || 0, 0)
-      const descuentos = inasistencias + cantina
+      const descuentos = inasistencias + cantina + otrasDeducciones
       const netoBase = Math.max(base - descuentos, 0)
-      const neto = roundMoney(netoBase + extra)
+      const descuentoTrasladadoExtras = Math.max(descuentos - base, 0)
+      const extraNeto = Math.max(extra - descuentoTrasladadoExtras, 0)
+      const neto = roundMoney(netoBase + extraNeto)
       const pagoPeriodo = roundMoney(getSafeMonto(pagosPeriodoPorPersonal[persona.id] || 0))
       const arrastrePrevio = roundMoney(getSafeMonto(arrastrePrevioPorPersonal[persona.id] || 0))
       const adelantos = roundMoney(getSafeMonto(adelantosPorPersonal[persona.id] || 0))
@@ -1181,6 +1233,7 @@ export default function GestionNominaPage() {
         base,
         inasistencias,
         cantina,
+        otrasDeducciones,
         extra,
         comentario: ajuste.comentario || '',
         comentarioExtra: ajuste.comentarioExtra || '',
@@ -1258,10 +1311,11 @@ export default function GestionNominaPage() {
 
     const ajustesPayload: Record<string, AjusteNomina> = {}
     for (const persona of personal) {
-      const ajuste = ajustes[persona.id] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }
+      const ajuste = ajustes[persona.id] || EMPTY_AJUSTE_NOMINA
       ajustesPayload[persona.id] = {
         inasistencias: getSafeMonto(ajuste.inasistencias),
         cantina: getSafeMonto(ajuste.cantina),
+        otrasDeducciones: getSafeMonto(ajuste.otrasDeducciones),
         extra: getSafeMonto(ajuste.extra),
         comentario: ajuste.comentario || '',
         comentarioExtra: ajuste.comentarioExtra || '',
@@ -1387,7 +1441,11 @@ export default function GestionNominaPage() {
     const abonosExtra = abonosPeriodo.filter((abono) => abono.tipo === 'extra')
 
     const subtotalBase = roundMoney(getSafeMonto(actual.netoBase))
-    const subtotalExtras = roundMoney(getSafeMonto(actual.extra))
+    const subtotalExtrasBruto = roundMoney(getSafeMonto(actual.extra))
+    const baseBruta = roundMoney(getSafeMonto(actual.base))
+    const descuentoTotal = roundMoney(getSafeMonto(actual.descuentos))
+    const descuentoTrasladadoExtras = roundMoney(Math.max(descuentoTotal - baseBruta, 0))
+    const subtotalExtras = roundMoney(Math.max(subtotalExtrasBruto - descuentoTrasladadoExtras, 0))
     const arrastreBase = roundMoney(getSafeMonto(actual.arrastrePrevio))
     const baseAbonosPeriodo = roundMoney(abonosBase.reduce((acc, abono) => acc + abono.montoUsd, 0))
     const extrasAbonosPeriodo = roundMoney(abonosExtra.reduce((acc, abono) => acc + abono.montoUsd, 0))
@@ -1402,17 +1460,47 @@ export default function GestionNominaPage() {
     const restanteExtras = roundMoney(Math.max(subtotalExtras - extrasAplicado, 0))
 
     const deduccionesBase: string[] = []
-    if (actual.inasistencias > 0) {
-      deduccionesBase.push(`- ${formatMontoMensaje(actual.inasistencias)} INASISTENCIAS`)
+    const deduccionesExtras: string[] = []
+    let baseDisponibleParaDeducciones = baseBruta
+
+    const deduccionesDistribuidas = [
+      { value: roundMoney(Math.max(getSafeMonto(actual.inasistencias), 0)), label: 'INASISTENCIAS' },
+      { value: roundMoney(Math.max(getSafeMonto(actual.cantina), 0)), label: 'CONSUMO DE CANTINA' },
+      { value: roundMoney(Math.max(getSafeMonto(actual.otrasDeducciones), 0)), label: 'OTRAS DEDUCCIONES' },
+    ]
+
+    for (const deduccion of deduccionesDistribuidas) {
+      if (deduccion.value <= 0) continue
+
+      const aplicadoBase = roundMoney(Math.min(deduccion.value, baseDisponibleParaDeducciones))
+      const aplicadoExtras = roundMoney(Math.max(deduccion.value - aplicadoBase, 0))
+
+      if (aplicadoBase > 0) {
+        deduccionesBase.push(`- ${formatMontoMensaje(aplicadoBase)} ${deduccion.label}`)
+      }
+
+      if (aplicadoExtras > 0) {
+        deduccionesExtras.push(`- ${formatMontoMensaje(aplicadoExtras)} ${deduccion.label} (TRASLADADO DESDE BASE)`)
+      }
+
+      baseDisponibleParaDeducciones = roundMoney(Math.max(baseDisponibleParaDeducciones - aplicadoBase, 0))
     }
-    if (actual.cantina > 0) {
-      deduccionesBase.push(`- ${formatMontoMensaje(actual.cantina)} CONSUMO DE CANTINA`)
+
+    const comentarioDescuento = (actual.comentario || '').trim()
+    if (comentarioDescuento) {
+      if (deduccionesBase.length > 0 || deduccionesExtras.length === 0) {
+        deduccionesBase.push(`- DETALLE: ${comentarioDescuento.toUpperCase()}`)
+      } else {
+        deduccionesExtras.push(`- DETALLE: ${comentarioDescuento.toUpperCase()}`)
+      }
     }
-    if ((actual.comentario || '').trim()) {
-      deduccionesBase.push(`- DETALLE: ${actual.comentario.trim().toUpperCase()}`)
-    }
+
     if (deduccionesBase.length === 0) {
       deduccionesBase.push('- SIN DEDUCCIONES')
+    }
+
+    if (deduccionesExtras.length === 0) {
+      deduccionesExtras.push('- SIN DEDUCCIONES')
     }
 
     const buildAbonoLine = (abono: AbonoDetalleNomina) => {
@@ -1451,9 +1539,13 @@ export default function GestionNominaPage() {
       abonosExtrasLines.push('- SIN ABONOS REGISTRADOS')
     }
 
-    const detalleExtra = (actual.comentarioExtra || '').trim()
-      ? actual.comentarioExtra.trim().toUpperCase()
-      : 'EXTRAS DEL PERÍODO'
+    const detalleExtraLines = (actual.comentarioExtra || '').trim()
+      ? actual.comentarioExtra
+        .split(/\r?\n+/)
+        .map((line) => line.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .map((line) => `- ${line.toUpperCase()}`)
+      : ['- EXTRAS DEL PERÍODO']
 
     return [
       `DETALLE DE PAGO BASE ${periodoTitulo}`,
@@ -1478,10 +1570,12 @@ export default function GestionNominaPage() {
       nombreEmpleado,
       '',
       'EXTRAS:',
-      `${formatMontoMensaje(subtotalExtras)} ${detalleExtra}`,
+      `${formatMontoMensaje(subtotalExtrasBruto)}`,
+      'DETALLE:',
+      ...detalleExtraLines,
       '',
       'DEDUCCIONES:',
-      '- SIN DEDUCCIONES',
+      ...deduccionesExtras,
       '__',
       `${formatMontoMensaje(subtotalExtras)} SUB TOTAL EXTRAS`,
       '',
@@ -1499,14 +1593,28 @@ export default function GestionNominaPage() {
     ? `https://wa.me/${actual.telefonoWhatsapp}?text=${encodeURIComponent(mensajePagoAutomatico)}`
     : ''
 
-  const actualizarAjuste = (empleadoId: string, campo: 'inasistencias' | 'cantina' | 'extra', value: string) => {
-    const parsed = Number.parseFloat(value)
-    const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+  const getAjusteInputKey = (empleadoId: string, campo: AjusteMontoCampo) => `${empleadoId}:${campo}`
+
+  const normalizarMontoInput = (raw: string) => raw.trim().replace(/,/g, '.')
+
+  const parseMontoInput = (raw: string) => {
+    const normalized = normalizarMontoInput(raw)
+    if (!normalized || normalized === '.') return null
+    if (!/^\d*\.?\d*$/.test(normalized)) return null
+
+    const parsed = Number.parseFloat(normalized)
+    if (!Number.isFinite(parsed) || parsed < 0) return null
+
+    return parsed
+  }
+
+  const actualizarAjusteNumerico = (empleadoId: string, campo: AjusteMontoCampo, monto: number) => {
+    const safeValue = Number.isFinite(monto) && monto > 0 ? monto : 0
 
     setAjustes((prev) => ({
       ...prev,
       [empleadoId]: {
-        ...(prev[empleadoId] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }),
+        ...(prev[empleadoId] || EMPTY_AJUSTE_NOMINA),
         [campo]: safeValue,
       },
     }))
@@ -1514,11 +1622,61 @@ export default function GestionNominaPage() {
     programarGuardadoBorrador()
   }
 
+  const actualizarAjuste = (empleadoId: string, campo: AjusteMontoCampo, value: string) => {
+    const key = getAjusteInputKey(empleadoId, campo)
+    setAjustesInputTemporal((prev) => ({ ...prev, [key]: value }))
+
+    const normalized = normalizarMontoInput(value)
+    if (!normalized) {
+      actualizarAjusteNumerico(empleadoId, campo, 0)
+      return
+    }
+
+    const parsed = parseMontoInput(value)
+    if (parsed !== null) {
+      actualizarAjusteNumerico(empleadoId, campo, parsed)
+    }
+  }
+
+  const confirmarAjuste = (empleadoId: string, campo: AjusteMontoCampo) => {
+    const key = getAjusteInputKey(empleadoId, campo)
+    const raw = ajustesInputTemporal[key]
+
+    setAjustesInputTemporal((prev) => {
+      if (!Object.prototype.hasOwnProperty.call(prev, key)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+
+    if (raw === undefined) return
+
+    const normalized = normalizarMontoInput(raw)
+    if (!normalized) {
+      actualizarAjusteNumerico(empleadoId, campo, 0)
+      return
+    }
+
+    const parsed = parseMontoInput(raw)
+    if (parsed !== null) {
+      actualizarAjusteNumerico(empleadoId, campo, parsed)
+    }
+  }
+
+  const getMontoInputValue = (empleadoId: string, campo: AjusteMontoCampo, currentValue: number) => {
+    const key = getAjusteInputKey(empleadoId, campo)
+    if (Object.prototype.hasOwnProperty.call(ajustesInputTemporal, key)) {
+      return ajustesInputTemporal[key]
+    }
+
+    return currentValue === 0 ? '' : String(currentValue)
+  }
+
   const actualizarComentario = (empleadoId: string, comentario: string) => {
     setAjustes((prev) => ({
       ...prev,
       [empleadoId]: {
-        ...(prev[empleadoId] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }),
+        ...(prev[empleadoId] || EMPTY_AJUSTE_NOMINA),
         comentario,
       },
     }))
@@ -1530,7 +1688,7 @@ export default function GestionNominaPage() {
     setAjustes((prev) => ({
       ...prev,
       [empleadoId]: {
-        ...(prev[empleadoId] || { inasistencias: 0, cantina: 0, extra: 0, comentario: '', comentarioExtra: '' }),
+        ...(prev[empleadoId] || EMPTY_AJUSTE_NOMINA),
         comentarioExtra,
       },
     }))
@@ -1718,6 +1876,7 @@ export default function GestionNominaPage() {
         base_mensual: roundMoney(row.base),
         descuento_inasistencias: roundMoney(row.inasistencias),
         descuento_cantina: roundMoney(row.cantina),
+        descuento_otras: roundMoney(row.otrasDeducciones),
         monto_extra: roundMoney(row.extra),
         comentario_descuento: row.comentario.trim() || null,
         comentario_extra: row.comentarioExtra.trim() || null,
@@ -1726,9 +1885,22 @@ export default function GestionNominaPage() {
         neto_total: roundMoney(row.neto),
       }))
 
-      const { error: detalleError } = await supabase
+      let { error: detalleError } = await supabase
         .from('nominas_mensuales_detalle')
         .insert(detallePayload)
+
+      if (detalleError && isMissingColumnError(detalleError, 'descuento_otras')) {
+        const legacyDetallePayload = detallePayload.map(({ descuento_otras, ...row }) => row)
+        const legacyInsert = await supabase
+          .from('nominas_mensuales_detalle')
+          .insert(legacyDetallePayload)
+
+        detalleError = legacyInsert.error
+
+        if (!detalleError && !silent) {
+          setMensaje('⚠️ Nómina guardada sin persistir Otras Deducciones en BD. Ejecuta la migración v50 para habilitar ese campo en nube.')
+        }
+      }
 
       if (detalleError) {
         if (silent && estado === 'borrador') {
@@ -2093,11 +2265,12 @@ export default function GestionNominaPage() {
                       <label className="block rounded-xl border border-gray-200 bg-white p-3">
                         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Inasistencias ($)</p>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={actual.inasistencias === 0 ? '' : String(actual.inasistencias)}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={getMontoInputValue(actual.id, 'inasistencias', actual.inasistencias)}
                           onChange={(e) => actualizarAjuste(actual.id, 'inasistencias', e.target.value)}
+                          onBlur={() => confirmarAjuste(actual.id, 'inasistencias')}
                           className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-black"
                           placeholder="0.00"
                         />
@@ -2106,11 +2279,26 @@ export default function GestionNominaPage() {
                       <label className="block rounded-xl border border-gray-200 bg-white p-3">
                         <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Consumo cantina ($)</p>
                         <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={actual.cantina === 0 ? '' : String(actual.cantina)}
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={getMontoInputValue(actual.id, 'cantina', actual.cantina)}
                           onChange={(e) => actualizarAjuste(actual.id, 'cantina', e.target.value)}
+                          onBlur={() => confirmarAjuste(actual.id, 'cantina')}
+                          className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-black"
+                          placeholder="0.00"
+                        />
+                      </label>
+
+                      <label className="block rounded-xl border border-gray-200 bg-white p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Otras deducciones ($)</p>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          value={getMontoInputValue(actual.id, 'otrasDeducciones', actual.otrasDeducciones)}
+                          onChange={(e) => actualizarAjuste(actual.id, 'otrasDeducciones', e.target.value)}
+                          onBlur={() => confirmarAjuste(actual.id, 'otrasDeducciones')}
                           className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-bold text-black"
                           placeholder="0.00"
                         />
@@ -2134,11 +2322,12 @@ export default function GestionNominaPage() {
                         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
                           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">Extra del empleado</p>
                           <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={actual.extra === 0 ? '' : String(actual.extra)}
+                            type="text"
+                            inputMode="decimal"
+                            autoComplete="off"
+                            value={getMontoInputValue(actual.id, 'extra', actual.extra)}
                             onChange={(e) => actualizarAjuste(actual.id, 'extra', e.target.value)}
+                            onBlur={() => confirmarAjuste(actual.id, 'extra')}
                             className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-bold text-black"
                             placeholder="Monto extra del mes"
                           />
@@ -2159,7 +2348,7 @@ export default function GestionNominaPage() {
                       value={actual.comentario}
                       onChange={(e) => actualizarComentario(actual.id, e.target.value)}
                       className="mt-2 min-h-[78px] w-full resize-y rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-black"
-                      placeholder="Ej: 2 inasistencias por reposo no justificado y consumo de cantina del mes."
+                      placeholder="Ej: 2 inasistencias por reposo no justificado, consumo de cantina y otras deducciones del mes."
                     />
                   </label>
 

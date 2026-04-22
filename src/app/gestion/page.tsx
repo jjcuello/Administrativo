@@ -64,7 +64,7 @@ export default function GestionDashboard() {
   const puedeGestionPersonal = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
   const puedeGestionClientes = roleCode === 'admin' || esOperador
   const puedeGestionProveedores = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
-  const puedeGestionNomina = roleCode === 'admin' || esOperador
+  const puedeGestionNomina = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
   const puedeGestionSocios = roleCode === 'admin' || esOperador
   const puedeGestionOperaciones = roleCode === 'admin' || roleCode === 'operativo' || esOperador
   const puedeGestionAgente = roleCode === 'admin' || roleCode === 'operativo' || roleCode === 'gestion_personal' || esOperador

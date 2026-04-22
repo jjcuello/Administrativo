@@ -14,6 +14,29 @@ type TrackerUser = {
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000
 const HEARTBEAT_MIN_GAP_MS = 60 * 1000
+const TRACKER_STATUS_STORAGE_KEY = 'app_activity_tracker_status'
+
+type TrackerStatus = {
+  enabled: boolean
+  disabledReason: string | null
+  lastAttemptAt: string | null
+  lastSuccessAt: string | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  lastEventType: ActivityEventType | null
+  lastRoute: string | null
+}
+
+const createInitialTrackerStatus = (): TrackerStatus => ({
+  enabled: true,
+  disabledReason: null,
+  lastAttemptAt: null,
+  lastSuccessAt: null,
+  lastErrorCode: null,
+  lastErrorMessage: null,
+  lastEventType: null,
+  lastRoute: null,
+})
 
 const getErrorText = (error: unknown) => {
   if (error instanceof Error && error.message) return error.message
@@ -32,6 +55,32 @@ export default function AppActivityTracker() {
   const trackerEnabledRef = useRef(true)
   const initializedRef = useRef(false)
   const lastHeartbeatRef = useRef(0)
+  const trackerStatusRef = useRef<TrackerStatus>(createInitialTrackerStatus())
+
+  const publicarEstadoTracker = (nextStatus: TrackerStatus) => {
+    trackerStatusRef.current = nextStatus
+
+    if (typeof window === 'undefined') return
+
+    try {
+      window.localStorage.setItem(TRACKER_STATUS_STORAGE_KEY, JSON.stringify(nextStatus))
+    } catch {
+      // Ignore storage errors and keep tracker running.
+    }
+
+    try {
+      window.dispatchEvent(new CustomEvent('app-activity-tracker-status', { detail: nextStatus }))
+    } catch {
+      // Ignore dispatch errors.
+    }
+  }
+
+  const actualizarEstadoTracker = (patch: Partial<TrackerStatus>) => {
+    publicarEstadoTracker({
+      ...trackerStatusRef.current,
+      ...patch,
+    })
+  }
 
   const registrarEvento = async (eventType: ActivityEventType, route: string, forceHeartbeat = false) => {
     if (!trackerEnabledRef.current) return
@@ -55,6 +104,13 @@ export default function AppActivityTracker() {
       user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
     }
 
+    actualizarEstadoTracker({
+      enabled: trackerEnabledRef.current,
+      lastAttemptAt: new Date().toISOString(),
+      lastEventType: eventType,
+      lastRoute: route,
+    })
+
     const { error } = await supabase.from('app_user_activity_logs').insert(payload)
     if (error) {
       const errorText = getErrorText(error).toLowerCase()
@@ -62,11 +118,32 @@ export default function AppActivityTracker() {
         ? String((error as { code?: unknown }).code || '')
         : ''
 
+      const rawMessage = getErrorText(error) || 'Error desconocido al registrar actividad'
+      console.warn('[activity-tracker] insert failed', { code, message: rawMessage, route, eventType })
+
+      actualizarEstadoTracker({
+        enabled: trackerEnabledRef.current,
+        lastErrorCode: code || null,
+        lastErrorMessage: rawMessage,
+      })
+
       if (errorText.includes('app_user_activity_logs') || code === '42P01' || code === '42501') {
         trackerEnabledRef.current = false
+        actualizarEstadoTracker({
+          enabled: false,
+          disabledReason: code === '42501' ? 'PERMISSION_DENIED' : 'TABLE_OR_POLICY_MISSING',
+        })
       }
       return
     }
+
+    actualizarEstadoTracker({
+      enabled: true,
+      disabledReason: null,
+      lastSuccessAt: new Date().toISOString(),
+      lastErrorCode: null,
+      lastErrorMessage: null,
+    })
 
     if (eventType === 'heartbeat') {
       lastHeartbeatRef.current = Date.now()
@@ -127,6 +204,8 @@ export default function AppActivityTracker() {
   }, [pathname])
 
   useEffect(() => {
+    publicarEstadoTracker(createInitialTrackerStatus())
+
     const enviarHeartbeat = () => {
       if (!trackerEnabledRef.current) return
       if (typeof document !== 'undefined' && document.hidden) return

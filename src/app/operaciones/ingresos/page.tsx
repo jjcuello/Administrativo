@@ -3,10 +3,10 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft, Save, Loader2, Wallet, Tag, Calendar, Search } from 'lucide-react'
+import { ArrowLeft, Save, Loader2, Wallet, Tag, Calendar, Search, Trash2 } from 'lucide-react'
 import { formatUSD } from '@/lib/currency'
 import { useCreateIngreso, usePaginatedIngresos, useIngresosMetadata, usePeriodoEscolarActivo } from '@/lib/hooks/financeHooks'
-import { updateIngreso } from '@/lib/supabaseHooks'
+import { deleteIngreso, updateIngreso } from '@/lib/supabaseHooks'
 import { supabase } from '@/lib/supabase'
 
 type Ingreso = {
@@ -351,6 +351,34 @@ export default function OperacionesIngresos() {
     setCargando(false)
   }
 
+  const eliminar = async (ingreso?: Ingreso) => {
+    if (!ingreso?.id) return
+
+    const confirmar = typeof window === 'undefined'
+      ? true
+      : window.confirm('¿Seguro que deseas borrar este ingreso? Esta acción no se puede deshacer.')
+
+    if (!confirmar) return
+
+    setCargando(true)
+    const { error } = await deleteIngreso(ingreso.id)
+
+    if (error) {
+      setMensaje(`❌ ${getErrorText(error)}`)
+      setCargando(false)
+      return
+    }
+
+    if (editId === ingreso.id) {
+      setEditId(null)
+      limpiarFormulario()
+    }
+
+    setMensaje('✅ Ingreso eliminado')
+    await refresh()
+    setCargando(false)
+  }
+
   const categoriasMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const c of categorias) map.set(c.id, c.nombre)
@@ -651,6 +679,17 @@ export default function OperacionesIngresos() {
             <div key={i.id} onClick={() => seleccionarIngreso(i)} className={`p-5 rounded-3xl border transition-all cursor-pointer ${editId === i.id ? 'bg-black text-white border-black shadow-xl shadow-black/20' : 'bg-white border-gray-200 shadow-sm hover:shadow-xl'}`}>
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm uppercase leading-tight font-black">{i.descripcion || 'Ingreso'}</p>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void eliminar(i)
+                  }}
+                  disabled={cargando}
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[8px] uppercase tracking-widest border disabled:opacity-60 ${editId === i.id ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white'}`}
+                >
+                  <Trash2 size={10} /> Borrar
+                </button>
               </div>
               <p className="text-[9px] mt-2 text-gray-400 uppercase">{categoriasMap.get(i.categoria_id || '') || 'Sin categoria'}</p>
               {i.alumno_id && (

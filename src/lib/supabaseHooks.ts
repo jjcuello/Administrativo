@@ -38,6 +38,13 @@ const toNormalizedError = (error: unknown, fallback: string): NormalizedError =>
   cause: error,
 })
 
+const isMissingColumnError = (error: unknown, columnName: string) => {
+  const text = getErrorMessage(error, '').toLowerCase()
+  const normalizedColumn = columnName.toLowerCase()
+  return text.includes(normalizedColumn)
+    && (text.includes('column') || text.includes('schema cache') || text.includes('does not exist') || text.includes('no existe'))
+}
+
 const safeResult = async <T>(
   operation: () => PromiseLike<{ data: unknown; error: unknown }>,
   fallback: string
@@ -91,22 +98,42 @@ export const listIngresosPaginated = async (
     const start = (page - 1) * perPage
     const end = page * perPage - 1
 
-    let query = supabase
-      .from('ingresos')
-      .select('*', { count: 'exact' })
-      .is('deleted_at', null)
-      .order('fecha_ingreso', { ascending: false })
+    const runQuery = async (useOrdenCarga: boolean) => {
+      let query = supabase
+        .from('ingresos')
+        .select('*', { count: 'exact' })
+        .is('deleted_at', null)
+        .neq('estado', 'anulado')
+        .order('fecha_ingreso', { ascending: false })
 
-    if (periodoEscolarId) {
-      query = query.eq('periodo_id', periodoEscolarId)
+      if (useOrdenCarga) {
+        query = query.order('orden_carga', { ascending: false })
+      }
+
+      query = query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (periodoEscolarId) {
+        query = query.eq('periodo_id', periodoEscolarId)
+      }
+
+      if (searchTerm && searchTerm.trim()) {
+        const q = `%${searchTerm.trim()}%`
+        query = query.or(`descripcion.ilike.${q},metodo_ingreso.ilike.${q}`)
+      }
+
+      return query.range(start, end)
     }
 
-    if (searchTerm && searchTerm.trim()) {
-      const q = `%${searchTerm.trim()}%`
-      query = query.or(`descripcion.ilike.${q},metodo_ingreso.ilike.${q}`)
+    let { data, error, count } = await runQuery(true)
+    if (error && isMissingColumnError(error, 'orden_carga')) {
+      const fallback = await runQuery(false)
+      data = fallback.data
+      error = fallback.error
+      count = fallback.count
     }
 
-    const { data, error, count } = await query.range(start, end)
     if (error) {
       return {
         data: (data as Ingresos[] | null) ?? null,
@@ -170,17 +197,73 @@ export const updateIngreso = async (id: string, payload: Partial<Ingresos>): Res
 }
 
 export const deleteIngreso = async (id: string): Result<Ingresos> => {
-  return safeResult(() => supabase.from('ingresos').delete().eq('id', id).select().maybeSingle(), 'No se pudo eliminar el ingreso')
+  try {
+    const hardDelete = await supabase
+      .from('ingresos')
+      .delete()
+      .eq('id', id)
+      .select()
+      .maybeSingle()
+
+    if (!hardDelete.error) {
+      return { data: (hardDelete.data as Ingresos | null) ?? null, error: null }
+    }
+
+    const fallback = await supabase
+      .from('ingresos')
+      .update({ estado: 'anulado', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .maybeSingle()
+
+    if (fallback.error) {
+      return { data: null, error: toNormalizedError(hardDelete.error, 'No se pudo eliminar el ingreso') }
+    }
+
+    return { data: (fallback.data as Ingresos | null) ?? null, error: null }
+  } catch (error) {
+    return { data: null, error: toNormalizedError(error, 'No se pudo eliminar el ingreso') }
+  }
 }
 
 export const listEgresos = async (periodoEscolarId?: string | null): Result<Egresos[]> => {
-  return safeResult(() => {
-    let query = supabase.from('egresos').select('*')
-    if (periodoEscolarId) {
-      query = query.eq('periodo_escolar_id', periodoEscolarId)
+  try {
+    const runQuery = async (useOrdenCarga: boolean) => {
+      let query = supabase
+        .from('egresos')
+        .select('*')
+        .order('fecha_pago', { ascending: false })
+
+      if (useOrdenCarga) {
+        query = query.order('orden_carga', { ascending: false })
+      }
+
+      query = query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+
+      if (periodoEscolarId) {
+        query = query.eq('periodo_escolar_id', periodoEscolarId)
+      }
+
+      return query
     }
-    return query
-  }, 'No se pudo cargar egresos')
+
+    let { data, error } = await runQuery(true)
+    if (error && isMissingColumnError(error, 'orden_carga')) {
+      const fallback = await runQuery(false)
+      data = fallback.data
+      error = fallback.error
+    }
+
+    if (error) {
+      return { data: (data as Egresos[] | null) ?? null, error: toNormalizedError(error, 'No se pudo cargar egresos') }
+    }
+
+    return { data: (data as Egresos[] | null) ?? null, error: null }
+  } catch (error) {
+    return { data: null, error: toNormalizedError(error, 'No se pudo cargar egresos') }
+  }
 }
 
 export const listEgresosByCategoria = async (categoria: EgresoCategoria): Result<Egresos[]> => {

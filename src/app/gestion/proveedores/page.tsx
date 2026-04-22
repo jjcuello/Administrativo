@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Truck, Save, Loader2, Search, Edit3, ToggleLeft, ToggleRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
+type DestinoContableEgreso = 'administrativo' | 'operativo' | 'proveedores'
+
 type Proveedor = {
   id: string
   nombre: string
@@ -16,7 +18,7 @@ type Proveedor = {
   email: string | null
   direccion: string | null
   condiciones_pago: string | null
-  destino_contable_egresos: 'administrativo' | 'operativo'
+  destino_contable_egresos: DestinoContableEgreso
   estado: 'activo' | 'inactivo'
   notas: string | null
   created_at: string
@@ -45,7 +47,7 @@ export default function GestionProveedores() {
     email: '',
     direccion: '',
     condiciones_pago: '',
-    destino_contable_egresos: 'administrativo' as 'administrativo' | 'operativo',
+    destino_contable_egresos: 'administrativo' as DestinoContableEgreso,
     estado: 'activo' as 'activo' | 'inactivo',
     notas: ''
   })
@@ -276,10 +278,15 @@ export default function GestionProveedores() {
             <input placeholder="DIRECCIÓN" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.direccion} onChange={e => setFormData({ ...formData, direccion: e.target.value })} />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input placeholder="CONDICIONES DE PAGO" className="w-full bg-gray-50 rounded-xl p-4 text-sm font-bold border-none" value={formData.condiciones_pago} onChange={e => setFormData({ ...formData, condiciones_pago: e.target.value })} />
-              <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.destino_contable_egresos} onChange={e => setFormData({ ...formData, destino_contable_egresos: e.target.value as 'administrativo' | 'operativo' })}>
-                <option value="administrativo">Egresos por defecto: Administrativo</option>
-                <option value="operativo">Egresos por defecto: Operativo</option>
-              </select>
+              <div>
+                <p className="mb-2 text-[10px] uppercase tracking-[0.15em] text-gray-500 font-black">Destino contable de egresos proveedores</p>
+                <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.destino_contable_egresos} onChange={e => setFormData({ ...formData, destino_contable_egresos: e.target.value as DestinoContableEgreso })}>
+                  <option value="administrativo">Proveedores: Administrativo</option>
+                  <option value="operativo">Proveedores: Operativo</option>
+                  <option value="proveedores">Proveedores: Cuenta Proveedores</option>
+                </select>
+                <p className="mt-2 text-[10px] text-gray-500 normal-case">Define cómo se registran por defecto los egresos de este proveedor.</p>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <select className="w-full bg-gray-100 rounded-xl p-4 text-sm font-black border-none" value={formData.estado} onChange={e => setFormData({ ...formData, estado: e.target.value as 'activo' | 'inactivo' })}>
@@ -321,7 +328,7 @@ export default function GestionProveedores() {
                 <p>Contacto: {p.contacto_nombre || 'N/A'}</p>
                 <p>Teléfono: {p.telefono || 'N/A'}</p>
                 <p>Email: {p.email || 'N/A'}</p>
-                <p>Default egreso: {p.destino_contable_egresos === 'operativo' ? 'Operativo' : 'Administrativo'}</p>
+                <p>Egresos proveedores por defecto: {p.destino_contable_egresos === 'operativo' ? 'Operativo' : p.destino_contable_egresos === 'proveedores' ? 'Proveedores' : 'Administrativo'}</p>
               </div>
 
               <div className="mt-4 flex items-center gap-2">

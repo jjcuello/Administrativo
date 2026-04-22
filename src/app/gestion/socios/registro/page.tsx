@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Landmark, Loader2, RefreshCcw } from 'lucide-react'
+import { ArrowLeft, Download, Landmark, Loader2, RefreshCcw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatUSD } from '@/lib/currency'
 
@@ -194,10 +194,10 @@ const EGRESO_RUBROS: RubroRule[] = [
   { label: 'UTILIDADES', match: ['utilidad'] },
   { label: 'PROFESORES', match: ['nomina', 'nómina', 'profesor'] },
   { label: 'PROVEEDORES', match: ['proveedor', 'inventario', 'suministro', 'uniforme', 'equipo', 'activo', 'compra'] },
-  { label: 'REDES', match: ['red', 'internet', 'wifi', 'telefon', 'condominio', 'servicios fijos'] },
+  { label: 'REDES Y MARKETING', match: ['red', 'internet', 'wifi', 'telefon', 'condominio', 'servicios fijos', 'publicidad', 'marketing', 'social media', 'diseno', 'diseño', 'audiovisual', 'promocion', 'promoción', 'banner', 'banners', 'ads'] },
   { label: 'CAPITAL', match: ['capital', 'prestamo', 'préstamo', 'interes', 'interés', 'pasivo'] },
   { label: 'GASTOS OPERATIVOS', match: ['operativo', 'mantenimiento', 'reparacion', 'reparación', 'transporte', 'logistica', 'logística'] },
-  { label: 'GASTOS ADMINISTRATIVOS', match: ['administrativo', 'honorario', 'papeleria', 'papelería', 'oficina', 'publicidad', 'marketing', 'social media', 'diseno', 'diseño', 'audiovisual', 'promocion', 'promoción', 'banner', 'banners', 'ads'] },
+  { label: 'GASTOS ADMINISTRATIVOS', match: ['administrativo', 'honorario', 'papeleria', 'papelería', 'oficina'] },
 ]
 
 const INGRESO_RUBROS_DISTRIBUCION: RubroRule[] = [
@@ -216,10 +216,10 @@ const EGRESO_RUBROS_DISTRIBUCION: RubroRule[] = [
   { label: 'TOTAL UTILIDADES', match: ['utilidad'] },
   { label: 'TOTAL PROFESORES', match: ['nomina base', 'nomina extra', 'nomina', 'nómina', 'profesor'] },
   { label: 'TOTAL PROVEEDORES', match: ['proveedor', 'inventario', 'suministro', 'uniforme', 'equipo', 'activo', 'compra'] },
-  { label: 'TOTAL REDES', match: ['red', 'internet', 'wifi', 'telefon', 'condominio', 'servicios fijos'] },
+  { label: 'TOTAL REDES Y MARKETING', match: ['red', 'internet', 'wifi', 'telefon', 'condominio', 'servicios fijos', 'publicidad', 'marketing', 'social media', 'diseno', 'diseño', 'audiovisual', 'promocion', 'promoción', 'banner', 'banners', 'ads'] },
   { label: 'TOTAL PASIVOS (CAPITAL)', match: ['pasivo', 'capital', 'prestamo', 'préstamo', 'interes', 'interés'] },
   { label: 'TOTAL GASTOS OPERATIVOS', match: ['operativo', 'mantenimiento', 'reparacion', 'reparación', 'transporte', 'logistica', 'logística'] },
-  { label: 'TOTAL GASTOS ADMINISTRATIVOS', match: ['administrativo', 'honorario', 'papeleria', 'papelería', 'oficina', 'publicidad', 'marketing', 'social media', 'diseno', 'diseño', 'audiovisual', 'promocion', 'promoción', 'banner', 'banners', 'ads'] },
+  { label: 'TOTAL GASTOS ADMINISTRATIVOS', match: ['administrativo', 'honorario', 'papeleria', 'papelería', 'oficina'] },
 ]
 
 const BALANCE_AJUSTES_PENDIENTES = [
@@ -705,6 +705,185 @@ const formatMontoColumna = (monto: number) => {
   if (!monto) return '—'
   return `$${formatUSD(monto)}`
 }
+
+const escapeHtml = (value: string) => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const toFilenameToken = (value: string) => {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase()
+}
+
+const PDF_BASE_STYLES = `
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    color: #111827;
+    background: #ffffff;
+  }
+  .header {
+    margin-bottom: 12px;
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+  .logo-wrap {
+    width: 64px;
+    height: 64px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .header-main {
+    min-width: 0;
+  }
+  .eyebrow {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 5px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 1.1;
+  }
+  .subtext {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #4b5563;
+  }
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin: 12px 0 10px;
+  }
+  .card {
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 8px 10px;
+  }
+  .card.dark {
+    background: #111827;
+    color: #ffffff;
+    border-color: #111827;
+  }
+  .card-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6b7280;
+  }
+  .card.dark .card-label { color: #d1d5db; }
+  .card-value {
+    margin-top: 4px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    overflow: hidden;
+    table-layout: fixed;
+  }
+  thead th {
+    background: #f3f4f6;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #4b5563;
+    padding: 6px 8px;
+    text-align: left;
+    border-bottom: 1px solid #d1d5db;
+  }
+  tbody td {
+    padding: 5px 8px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 10px;
+    line-height: 1.2;
+    vertical-align: top;
+    word-break: break-word;
+  }
+  .month-row {
+    background: #16a34a;
+    color: #ffffff;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 700;
+    text-transform: capitalize;
+    padding: 8px 6px !important;
+  }
+  .section-row {
+    background: #111827;
+    color: #ffffff;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .empty-row {
+    text-align: center;
+    color: #6b7280;
+    padding: 14px;
+  }
+  .amount { text-align: right; white-space: nowrap; font-weight: 700; }
+  .negative { color: #b91c1c; }
+  .positive { color: #111827; }
+  .grid-two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .block-title {
+    margin: 0 0 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #4b5563;
+    font-weight: 700;
+  }
+  .footer {
+    margin-top: 8px;
+    font-size: 9px;
+    color: #6b7280;
+  }
+  @page {
+    margin: 10mm;
+    size: A4 portrait;
+  }
+  @media print {
+    body { padding: 0; }
+  }
+`
 
 const categoriaEsNomina = (nombreCategoria: string) => {
   const normalizado = normalizeText(nombreCategoria)
@@ -1714,6 +1893,537 @@ export default function GestionSociosRegistroPage() {
   const baselineNetoY = CHART_LAYOUT.paddingTop
     + ((CHART_LAYOUT.height - CHART_LAYOUT.paddingTop - CHART_LAYOUT.paddingBottom) / 2)
 
+  const imprimirHtmlComoPdf = useCallback((html: string, onError: (message: string) => void) => {
+    if (typeof window === 'undefined') return
+
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    iframe.setAttribute('aria-hidden', 'true')
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        iframe.remove()
+      }, 500)
+    }
+
+    iframe.onload = () => {
+      const frameWindow = iframe.contentWindow
+      if (!frameWindow) {
+        onError('❌ No se pudo preparar la impresión del PDF en este navegador.')
+        cleanup()
+        return
+      }
+
+      frameWindow.focus()
+
+      const finish = () => cleanup()
+      frameWindow.onafterprint = finish
+
+      window.setTimeout(() => {
+        try {
+          frameWindow.print()
+        } catch {
+          onError('❌ No se pudo abrir el diálogo de impresión. Prueba nuevamente desde Firefox.')
+          cleanup()
+        }
+      }, 250)
+    }
+
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentDocument
+    if (!iframeDoc) {
+      onError('❌ No se pudo preparar la impresión del PDF en este navegador.')
+      cleanup()
+      return
+    }
+
+    iframeDoc.open()
+    iframeDoc.write(html)
+    iframeDoc.close()
+  }, [])
+
+  const descargarPdfRegistro = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const cuentaNombre = cuentaSeleccionada?.nombre || 'Cuenta'
+    const periodoLabel = formatPeriodoYm(periodoRegistroYm)
+    const suggestedFilename = `modulo1_registro_${toFilenameToken(cuentaNombre)}_${periodoRegistroYm}.pdf`
+    const logoUrl = `${window.location.origin}/logo_ana.jpg`
+    const generadoEn = new Intl.DateTimeFormat('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date())
+
+    const rowsHtml = itemsVista.length > 0
+      ? itemsVista.map((item) => {
+        if (item.type === 'mes') {
+          return `
+            <tr>
+              <td colspan="5" class="month-row">${escapeHtml(item.label)}</td>
+            </tr>
+          `
+        }
+
+        const row = item.row
+        return `
+          <tr>
+            <td>${escapeHtml(formatFechaCorta(row.fecha))}</td>
+            <td>${escapeHtml(row.concepto)}</td>
+            <td class="amount ${row.monto < 0 ? 'negative' : 'positive'}">${escapeHtml(formatMontoConSigno(row.monto))}</td>
+            <td class="amount">$${escapeHtml(formatUSD(row.saldo))}</td>
+            <td>${escapeHtml(row.rubro)}</td>
+          </tr>
+        `
+      }).join('')
+      : `
+        <tr>
+          <td colspan="5" class="empty-row">Sin registros para ${escapeHtml(periodoLabel)} en esta cuenta.</td>
+        </tr>
+      `
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(suggestedFilename)}</title>
+          <style>
+            ${PDF_BASE_STYLES}
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-wrap">
+              <img class="logo" src="${logoUrl}" alt="Logo Fundación" />
+            </div>
+            <div class="header-main">
+              <div class="eyebrow">Módulo 1 · Registro diario</div>
+              <h1>Registro Contable Fundación Academia Nacional de Ajedrez</h1>
+              <div class="subtext">Cuenta: ${escapeHtml(String(cuentaNombre).toUpperCase())} · Período: ${escapeHtml(periodoLabel)} · Año escolar: ${escapeHtml(anioEscolarRegistro.replace('-', ' - '))}</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-label">Saldo inicial</div>
+              <div class="card-value">$${escapeHtml(formatUSD(resumen.saldoInicial))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Entradas</div>
+              <div class="card-value">$${escapeHtml(formatUSD(resumen.totalEntradas))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Salidas</div>
+              <div class="card-value">$${escapeHtml(formatUSD(resumen.totalSalidas))}</div>
+            </div>
+            <div class="card dark">
+              <div class="card-label">Saldo actual</div>
+              <div class="card-value">$${escapeHtml(formatUSD(resumen.saldoActual))}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th style="text-align:right">Monto</th>
+                <th style="text-align:right">Saldo</th>
+                <th>Rubro</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+
+          <div class="footer">Documento generado el ${escapeHtml(generadoEn)}.</div>
+        </body>
+      </html>
+    `
+
+    imprimirHtmlComoPdf(html, setMensaje)
+  }, [anioEscolarRegistro, cuentaSeleccionada, imprimirHtmlComoPdf, itemsVista, periodoRegistroYm, resumen])
+
+  const descargarPdfResumen = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const cuentaNombre = resumenMesCuenta.cuentaNombre || cuentaSeleccionada?.nombre || 'Cuenta'
+    const periodoLabel = formatPeriodoYm(resumenMesCuenta.periodoYm || periodoResumenYm)
+    const periodoArchivo = resumenMesCuenta.periodoYm || periodoResumenYm
+    const suggestedFilename = `modulo2_cuentas_mensuales_${toFilenameToken(cuentaNombre)}_${periodoArchivo}.pdf`
+    const logoUrl = `${window.location.origin}/logo_ana.jpg`
+    const generadoEn = new Intl.DateTimeFormat('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date())
+
+    const ingresosRowsHtml = resumenMesCuenta.ingresos.length > 0
+      ? resumenMesCuenta.ingresos.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td class="amount">${escapeHtml(formatMontoConSigno(item.monto))}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="2" class="empty-row">Sin datos de ingresos.</td></tr>'
+
+    const egresosRowsHtml = resumenMesCuenta.egresos.length > 0
+      ? resumenMesCuenta.egresos.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td class="amount">${escapeHtml(formatMontoConSigno(item.monto))}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="2" class="empty-row">Sin datos de egresos.</td></tr>'
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(suggestedFilename)}</title>
+          <style>${PDF_BASE_STYLES}</style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-wrap">
+              <img class="logo" src="${logoUrl}" alt="Logo Fundación" />
+            </div>
+            <div class="header-main">
+              <div class="eyebrow">Módulo 2 · Cuentas mensuales</div>
+              <h1>Registro Contable Fundación Academia Nacional de Ajedrez</h1>
+              <div class="subtext">Cuenta: ${escapeHtml(String(cuentaNombre).toUpperCase())} · Período: ${escapeHtml(periodoLabel)} · Año escolar: ${escapeHtml(anioEscolarResumen.replace('-', ' - '))}</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-label">Ingresos globales</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenMesCuenta.ingresosGlobal))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Egresos globales</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenMesCuenta.egresosGlobal))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Ingresos total</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenMesCuenta.totalIngresos))}</div>
+            </div>
+            <div class="card dark">
+              <div class="card-label">Egresos total</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenMesCuenta.totalEgresos))}</div>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div>
+              <p class="block-title">Ingresos por rubro</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rubro</th>
+                    <th style="text-align:right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${ingresosRowsHtml}
+                  <tr>
+                    <td><strong>Ingresos total</strong></td>
+                    <td class="amount"><strong>${escapeHtml(formatMontoConSigno(resumenMesCuenta.totalIngresos))}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div>
+              <p class="block-title">Egresos por rubro</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rubro</th>
+                    <th style="text-align:right">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${egresosRowsHtml}
+                  <tr>
+                    <td><strong>Egresos total</strong></td>
+                    <td class="amount"><strong>${escapeHtml(formatMontoConSigno(resumenMesCuenta.totalEgresos))}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="footer">Documento generado el ${escapeHtml(generadoEn)}.</div>
+        </body>
+      </html>
+    `
+
+    imprimirHtmlComoPdf(html, setMensajeResumenMes)
+  }, [anioEscolarResumen, cuentaSeleccionada, imprimirHtmlComoPdf, periodoResumenYm, resumenMesCuenta])
+
+  const descargarPdfDistribucion = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const periodoLabel = formatPeriodoYm(resumenDistribucion.periodoHastaYm || periodoDistribucionYm)
+    const periodoArchivo = resumenDistribucion.periodoHastaYm || periodoDistribucionYm
+    const suggestedFilename = `modulo3_distribucion_anual_${periodoArchivo}.pdf`
+    const logoUrl = `${window.location.origin}/logo_ana.jpg`
+    const generadoEn = new Intl.DateTimeFormat('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date())
+
+    const ingresosRowsHtml = resumenDistribucion.ingresos.length > 0
+      ? resumenDistribucion.ingresos.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td class="amount">$${escapeHtml(formatUSD(Math.abs(item.monto)))}</td>
+          <td class="amount">${escapeHtml(formatPorcentaje(item.porcentaje))}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="3" class="empty-row">Sin datos de ingresos.</td></tr>'
+
+    const egresosRowsHtml = resumenDistribucion.egresos.length > 0
+      ? resumenDistribucion.egresos.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td class="amount">$${escapeHtml(formatUSD(Math.abs(item.monto)))}</td>
+          <td class="amount">${escapeHtml(formatPorcentaje(item.porcentaje))}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="3" class="empty-row">Sin datos de egresos.</td></tr>'
+
+    const tendenciaRowsHtml = resumenDistribucion.tendencia.length > 0
+      ? resumenDistribucion.tendencia.map((item) => `
+        <tr>
+          <td>${escapeHtml(item.label)}</td>
+          <td class="amount">$${escapeHtml(formatUSD(item.ingresos))}</td>
+          <td class="amount">$${escapeHtml(formatUSD(item.egresos))}</td>
+          <td class="amount">${escapeHtml(formatMontoConSigno(item.neto))}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="4" class="empty-row">Sin tendencia disponible.</td></tr>'
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(suggestedFilename)}</title>
+          <style>${PDF_BASE_STYLES}</style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-wrap">
+              <img class="logo" src="${logoUrl}" alt="Logo Fundación" />
+            </div>
+            <div class="header-main">
+              <div class="eyebrow">Módulo 3 · Distribución anual</div>
+              <h1>Registro Contable Fundación Academia Nacional de Ajedrez</h1>
+              <div class="subtext">Corte: ${escapeHtml(periodoLabel)} · Año escolar: ${escapeHtml(anioEscolarDistribucion.replace('-', ' - '))} · Rango: ${escapeHtml(resumenDistribucion.rangoLabel || getRangoEscolarLabel(periodoDistribucionYm))}</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-label">Total ingresos</div>
+              <div class="card-value">$${escapeHtml(formatUSD(resumenDistribucion.totalIngresos))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Total egresos</div>
+              <div class="card-value">-$${escapeHtml(formatUSD(resumenDistribucion.totalEgresosAbs))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Resultado neto</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenDistribucion.resultadoNeto))}</div>
+            </div>
+            <div class="card dark">
+              <div class="card-label">Margen neto</div>
+              <div class="card-value">${escapeHtml(formatPorcentaje(resumenDistribucion.margenNeto))}</div>
+            </div>
+          </div>
+
+          <div class="grid-two">
+            <div>
+              <p class="block-title">Distribución de ingresos</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rubro</th>
+                    <th style="text-align:right">Monto</th>
+                    <th style="text-align:right">%</th>
+                  </tr>
+                </thead>
+                <tbody>${ingresosRowsHtml}</tbody>
+              </table>
+            </div>
+            <div>
+              <p class="block-title">Distribución de egresos</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Rubro</th>
+                    <th style="text-align:right">Monto</th>
+                    <th style="text-align:right">%</th>
+                  </tr>
+                </thead>
+                <tbody>${egresosRowsHtml}</tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="margin-top:10px">
+            <p class="block-title">Tendencia mensual escolar</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Mes</th>
+                  <th style="text-align:right">Ingresos</th>
+                  <th style="text-align:right">Egresos</th>
+                  <th style="text-align:right">Neto</th>
+                </tr>
+              </thead>
+              <tbody>${tendenciaRowsHtml}</tbody>
+            </table>
+          </div>
+
+          <div class="footer">Documento generado el ${escapeHtml(generadoEn)}.</div>
+        </body>
+      </html>
+    `
+
+    imprimirHtmlComoPdf(html, setMensajeDistribucion)
+  }, [anioEscolarDistribucion, imprimirHtmlComoPdf, periodoDistribucionYm, resumenDistribucion])
+
+  const descargarPdfBalance = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const periodoLabel = formatPeriodoYm(resumenBalance.periodoHastaYm || periodoBalanceYm)
+    const periodoArchivo = resumenBalance.periodoHastaYm || periodoBalanceYm
+    const suggestedFilename = `modulo4_balance_anual_${periodoArchivo}.pdf`
+    const logoUrl = `${window.location.origin}/logo_ana.jpg`
+    const generadoEn = new Intl.DateTimeFormat('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date())
+
+    const ingresosRowsHtml = resumenBalance.ingresos.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.label)}</td>
+        <td class="amount">${escapeHtml(formatMontoColumna(item.entrada))}</td>
+        <td class="amount">${escapeHtml(formatMontoColumna(item.salida))}</td>
+        <td class="amount">${escapeHtml(formatMontoConSigno(item.saldo))}</td>
+      </tr>
+    `).join('')
+
+    const egresosRowsHtml = resumenBalance.egresos.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.label)}</td>
+        <td class="amount">${escapeHtml(formatMontoColumna(item.entrada))}</td>
+        <td class="amount">${escapeHtml(formatMontoColumna(item.salida))}</td>
+        <td class="amount">${escapeHtml(formatMontoConSigno(item.saldo))}</td>
+      </tr>
+    `).join('')
+
+    const ajustesRowsHtml = resumenBalance.ajustesPendientes.map((item) => `
+      <tr>
+        <td>${escapeHtml(item.label)}</td>
+        <td class="amount">—</td>
+        <td class="amount">—</td>
+        <td class="amount">${escapeHtml(formatMontoConSigno(item.saldo))}</td>
+      </tr>
+    `).join('')
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(suggestedFilename)}</title>
+          <style>${PDF_BASE_STYLES}</style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="logo-wrap">
+              <img class="logo" src="${logoUrl}" alt="Logo Fundación" />
+            </div>
+            <div class="header-main">
+              <div class="eyebrow">Módulo 4 · Balance anual</div>
+              <h1>Registro Contable Fundación Academia Nacional de Ajedrez</h1>
+              <div class="subtext">Corte: ${escapeHtml(periodoLabel)} · Año escolar: ${escapeHtml(anioEscolarBalance.replace('-', ' - '))} · Rango: ${escapeHtml(resumenBalance.rangoLabel || getRangoEscolarLabel(periodoBalanceYm))}</div>
+            </div>
+          </div>
+
+          <div class="summary">
+            <div class="card">
+              <div class="card-label">Entradas totales</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenBalance.totalEntradas))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Salidas totales</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(-resumenBalance.totalSalidas))}</div>
+            </div>
+            <div class="card">
+              <div class="card-label">Resultado ejercicio</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenBalance.resultadoEjercicio))}</div>
+            </div>
+            <div class="card dark">
+              <div class="card-label">Resultado ajustado</div>
+              <div class="card-value">${escapeHtml(formatMontoConSigno(resumenBalance.resultadoAjustado))}</div>
+            </div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Descripción</th>
+                <th style="text-align:right">Entrada</th>
+                <th style="text-align:right">Salida</th>
+                <th style="text-align:right">Saldo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="4" class="section-row">Ingresos operativos</td></tr>
+              ${ingresosRowsHtml}
+              <tr><td colspan="4" class="section-row">Egresos operativos</td></tr>
+              ${egresosRowsHtml}
+              <tr><td colspan="4" class="section-row">Ajustes pendientes</td></tr>
+              ${ajustesRowsHtml}
+              <tr>
+                <td><strong>Resultado del ejercicio</strong></td>
+                <td class="amount"><strong>${escapeHtml(formatMontoColumna(resumenBalance.totalEntradas))}</strong></td>
+                <td class="amount"><strong>${escapeHtml(formatMontoColumna(resumenBalance.totalSalidas))}</strong></td>
+                <td class="amount"><strong>${escapeHtml(formatMontoConSigno(resumenBalance.resultadoEjercicio))}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="footer">Documento generado el ${escapeHtml(generadoEn)}.</div>
+        </body>
+      </html>
+    `
+
+    imprimirHtmlComoPdf(html, setMensajeBalance)
+  }, [anioEscolarBalance, imprimirHtmlComoPdf, periodoBalanceYm, resumenBalance])
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-white via-gray-50 to-gray-100 px-6 py-10 md:px-10">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-gray-100 to-transparent" />
@@ -1824,6 +2534,18 @@ export default function GestionSociosRegistroPage() {
                     </select>
                   </label>
                 </>
+              )}
+
+              {moduloActivo === 'registro' && (
+                <button
+                  type="button"
+                  onClick={descargarPdfRegistro}
+                  disabled={!cuentaId || cargandoRegistro}
+                  className="inline-flex h-12 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-5 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                >
+                  <Download size={14} />
+                  Descargar PDF
+                </button>
               )}
 
               {moduloActivo === 'registro' && (
@@ -1975,6 +2697,16 @@ export default function GestionSociosRegistroPage() {
 
               <button
                 type="button"
+                onClick={descargarPdfResumen}
+                disabled={!cuentaId || cargandoResumenMes}
+                className="inline-flex h-12 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-5 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+              >
+                <Download size={14} />
+                Descargar PDF
+              </button>
+
+              <button
+                type="button"
                 onClick={() => void cargarResumenMensualCuenta()}
                 disabled={!cuentaId || !PERIODO_YM_REGEX.test(periodoResumenYm) || cargandoResumenMes}
                 className="inline-flex h-12 items-center gap-2 rounded-2xl border border-black bg-black px-5 text-[11px] font-bold uppercase tracking-[0.14em] text-white shadow-sm transition-all hover:bg-gray-900 disabled:cursor-not-allowed disabled:border-gray-300 disabled:bg-white disabled:text-gray-400"
@@ -2098,6 +2830,16 @@ export default function GestionSociosRegistroPage() {
                     ))}
                   </select>
                 </label>
+
+                <button
+                  type="button"
+                  onClick={descargarPdfDistribucion}
+                  disabled={cargandoDistribucion}
+                  className="inline-flex h-12 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-5 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                >
+                  <Download size={14} />
+                  Descargar PDF
+                </button>
 
                 <button
                   type="button"
@@ -2736,6 +3478,16 @@ export default function GestionSociosRegistroPage() {
                     ))}
                   </select>
                 </label>
+
+                <button
+                  type="button"
+                  onClick={descargarPdfBalance}
+                  disabled={cargandoBalance}
+                  className="inline-flex h-12 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-5 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                >
+                  <Download size={14} />
+                  Descargar PDF
+                </button>
 
                 <button
                   type="button"

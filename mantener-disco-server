@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REMOTE_HOST="${ACADEMIA_REMOTE_HOST:-192.168.88.132}"
+REMOTE_PORT="${ACADEMIA_REMOTE_PORT:-2468}"
+REMOTE_USER="${ACADEMIA_REMOTE_USER:-jcuello}"
+REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-/home/${REMOTE_USER}/academia-ana}"
+PM2_APP_NAME="${ACADEMIA_PM2_APP_NAME:-academia-ana-dev}"
+APP_PORT="${ACADEMIA_APP_PORT:-3000}"
+RESET_NEXT="${ACADEMIA_RESET_NEXT:-0}"
+
+SSH_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
+
+read -r -d '' REMOTE_COMMAND <<'EOF' || true
+set -euo pipefail
+
+APP_DIR=${REMOTE_APP_DIR}
+PM2_NAME=${PM2_APP_NAME}
+PORT_VALUE=${APP_PORT}
+RESET_NEXT_VALUE=${RESET_NEXT}
+
+case "${APP_DIR}" in
+  ~/*) APP_DIR="${HOME}/${APP_DIR#~/}" ;;
+esac
+
+echo "=== DISK SUMMARY ==="
+df -hT /
+echo
+echo "=== KEY DIRECTORIES ==="
+du -sh "${APP_DIR}"/.next 2>/dev/null || true
+du -sh ~/.npm 2>/dev/null || true
+du -sh ~/.pm2 2>/dev/null || true
+du -sh /var/log 2>/dev/null || true
+du -sh /var/log/journal 2>/dev/null || true
+echo
+echo "=== CLEANUP USER-OWNED CACHE ==="
+npm cache clean --force >/dev/null 2>&1 || true
+find /tmp -maxdepth 1 -type f -name 'next-panic-*.log' -delete 2>/dev/null || true
+pm2 flush "${PM2_NAME}" >/dev/null 2>&1 || true
+
+if [[ "${RESET_NEXT_VALUE}" == "1" ]]; then
+  echo
+  echo "=== RESET .next AND RESTART PM2 ==="
+  pm2 stop "${PM2_NAME}" || true
+  rm -rf "${APP_DIR}"/.next
+  cd "${APP_DIR}"
+  PORT="${PORT_VALUE}" pm2 start npm --name "${PM2_NAME}" -- run dev || pm2 restart "${PM2_NAME}"
+  pm2 save >/dev/null 2>&1 || true
+fi
+
+echo
+echo "=== AFTER CLEANUP ==="
+df -hT /
+du -sh "${APP_DIR}"/.next 2>/dev/null || true
+du -sh ~/.npm 2>/dev/null || true
+echo
+echo "=== PM2 STATUS ==="
+pm2 status "${PM2_NAME}" --no-color || true
+echo
+echo "=== HEALTHCHECK ==="
+curl --max-time 20 -sS -o /tmp/academia-health.txt -w '%{http_code}\n' "http://127.0.0.1:${PORT_VALUE}/" || true
+EOF
+
+echo "Conectando a ${SSH_TARGET}:${REMOTE_PORT} para mantenimiento de disco..."
+ssh -p "${REMOTE_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_TARGET}" \
+  "REMOTE_APP_DIR=$(printf '%q' "${REMOTE_APP_DIR}") PM2_APP_NAME=$(printf '%q' "${PM2_APP_NAME}") APP_PORT=$(printf '%q' "${APP_PORT}") RESET_NEXT=$(printf '%q' "${RESET_NEXT}") bash -lc $(printf '%q' "${REMOTE_COMMAND}")"

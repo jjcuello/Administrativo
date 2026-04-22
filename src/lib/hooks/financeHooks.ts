@@ -19,7 +19,7 @@ type ProveedorMeta = {
   id: string
   nombre?: string
   nombre_comercial?: string
-  destino_contable_egresos?: 'administrativo' | 'operativo'
+  destino_contable_egresos?: 'administrativo' | 'operativo' | 'proveedores'
 }
 type ProfesorMeta = { id: string; nombres?: string; apellidos?: string; cargo?: string }
 type CategoriaIngresoSeed = { nombre: string; descripcion: string }

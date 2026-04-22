@@ -38,6 +38,11 @@ const isWriteEndpoint = (pathname: string) => {
   return pathname.includes('/rest/v1/') || pathname.includes('/storage/v1/object')
 }
 
+const isReadOnlyAllowedWriteEndpoint = (pathname: string) => {
+  // Allow activity telemetry writes even in read-only mode.
+  return pathname.includes('/rest/v1/app_user_activity_logs')
+}
+
 const buildReadOnlyResponse = () => {
   return new Response(
     JSON.stringify({
@@ -101,7 +106,7 @@ const guardedFetch: typeof fetch = async (input, init) => {
   }
 
   const roleCode = await getCurrentRoleCode()
-  if (roleCode && READ_ONLY_ROLE_CODES.has(roleCode)) {
+  if (roleCode && READ_ONLY_ROLE_CODES.has(roleCode) && !isReadOnlyAllowedWriteEndpoint(url.pathname)) {
     return buildReadOnlyResponse()
   }
 

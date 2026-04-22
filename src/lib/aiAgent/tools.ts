@@ -286,37 +286,116 @@ const isPersonalPaymentLookupQuery = (message: string) => {
   ])
 }
 
-const extractPersonTermsFromMessage = (message: string) => {
-  const text = normalizeForSearch(message)
-  const stopWords = new Set([
-    'datos', 'pago', 'movil', 'pm', 'banco', 'cuenta', 'por', 'favor', 'del', 'de', 'la', 'el',
-    'los', 'las', 'persona', 'personal', 'profesor', 'profesores', 'administrativo', 'administrativos',
-    'academia', 'interno', 'plan', 'como', 'esta', 'estan', 'pasar', 'puedes', 'puede',
-    'sabe', 'sabes', 'saber', 'cuanto', 'scuanto', 'gana', 'ganan', 'cobra', 'cobran',
-    'sueldo', 'salario', 'base', 'mensual', 'monto', 'tienes', 'acceso', 'ese', 'esa',
-    'su', 'sus', 'ficha', 'tengo', 'tiene', 'tienen',
-  ])
+const PERSON_SEARCH_STOP_WORDS = new Set([
+  'a', 'academia', 'acceso', 'administrativo', 'administrativos', 'apellido', 'apellidos',
+  'banca', 'bancarios', 'banco', 'base', 'celular', 'como', 'consulta', 'consultar',
+  'cobra', 'cobran', 'cuenta', 'cual', 'cuanto', 'datos', 'de', 'del', 'deme',
+  'el', 'esa', 'ese', 'esta', 'estan', 'ficha', 'ganan', 'gana', 'gracias', 'interno', 'la',
+  'las', 'le', 'los', 'mensual', 'monto', 'movil', 'nombre', 'nombres', 'numero', 'paga',
+  'pagale', 'pagar', 'pagarle', 'pago', 'para', 'pasame', 'pasar', 'personal', 'plan',
+  'pm', 'por', 'profesor', 'profesores', 'puede', 'puedes', 'quiero', 'sabe', 'saber',
+  'sabes', 'salario', 'scuanto', 'su', 'sueldo', 'sus', 'telefono', 'tengo', 'tiene',
+  'tienen', 'tienes', 'ver',
+])
 
-  const terms = new Set<string>()
+const extractPersonTokens = (value: string, options?: { allowInitials?: boolean }) => {
+  const allowInitials = options?.allowInitials ?? false
+  const minLength = allowInitials ? 1 : 3
 
-  const matchByPreposition = text.match(/\b(?:de|del|para|a)\s+([a-z0-9\s]{2,})/)
-  const raw = (matchByPreposition?.[1] || '').trim()
-
-  if (raw) {
-    raw
-      .split(/\s+/)
-      .map((part) => part.trim())
-      .filter((part) => part.length >= 3 && !stopWords.has(part))
-      .forEach((part) => terms.add(part))
-  }
-
-  text
+  return value
     .split(/\s+/)
     .map((part) => part.trim())
-    .filter((part) => part.length >= 3 && !stopWords.has(part) && !/^\d+$/.test(part))
-    .forEach((part) => terms.add(part))
+    .filter((part) => part.length >= minLength && !PERSON_SEARCH_STOP_WORDS.has(part) && !/^\d+$/.test(part))
+}
+
+const extractPersonTermsFromMessage = (message: string) => {
+  const text = normalizeForSearch(message)
+  const terms = new Set<string>()
+
+  const termsFromPrepositions = new Set<string>()
+  const prepositionMatches = text.matchAll(/\b(?:de|del|para|a)\s+([a-z0-9\s]{2,})/g)
+  for (const match of prepositionMatches) {
+    const raw = (match[1] || '').trim()
+    if (!raw) continue
+    for (const token of extractPersonTokens(raw, { allowInitials: true })) {
+      termsFromPrepositions.add(token)
+    }
+  }
+
+  if (termsFromPrepositions.size > 0) {
+    return Array.from(termsFromPrepositions)
+  }
+
+  for (const token of extractPersonTokens(text)) {
+    terms.add(token)
+  }
 
   return Array.from(terms)
+}
+
+const tokenizePersonName = (row: PersonalRow) => {
+  return normalizeForSearch(`${row.nombres || ''} ${row.apellidos || ''}`)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+}
+
+const scorePersonalMatch = (row: PersonalRow, searchTerms: string[]) => {
+  const nameTokens = tokenizePersonName(row)
+  const cedula = normalizeForSearch(row.cedula_numero || '').replace(/\s+/g, '')
+  const haystack = normalizeForSearch(`${row.nombres || ''} ${row.apellidos || ''} ${row.cedula_numero || ''}`)
+
+  let score = 0
+
+  for (const term of searchTerms) {
+    if (!term) continue
+
+    if (/^\d+$/.test(term)) {
+      if (!cedula || !cedula.includes(term)) return null
+      score += cedula === term ? 3 : 2
+      continue
+    }
+
+    if (term.length === 1) {
+      const hasInitial = nameTokens.some((token) => token.startsWith(term))
+      if (!hasInitial) return null
+      score += 1
+      continue
+    }
+
+    const exactToken = nameTokens.includes(term)
+    if (exactToken) {
+      score += 3
+      continue
+    }
+
+    const prefixToken = nameTokens.some((token) => token.startsWith(term))
+    if (prefixToken) {
+      score += 2
+      continue
+    }
+
+    const contains = haystack.includes(term)
+    if (contains) {
+      score += 1
+      continue
+    }
+
+    return null
+  }
+
+  return score
+}
+
+const findPersonalMatches = (rows: PersonalRow[], searchTerms: string[]) => {
+  if (searchTerms.length === 0) return [] as PersonalRow[]
+
+  const scored = rows
+    .map((row) => ({ row, score: scorePersonalMatch(row, searchTerms) }))
+    .filter((entry): entry is { row: PersonalRow; score: number } => entry.score !== null)
+
+  scored.sort((a, b) => b.score - a.score)
+  return scored.map((entry) => entry.row)
 }
 
 const fetchPersonalRows = async () => {
@@ -432,10 +511,7 @@ const runPersonalSalaryLookupTool = async (message: string): Promise<ToolRunResu
     }
   }
 
-  const matches = activos.filter((row) => {
-    const haystack = normalizeForSearch(`${row.nombres || ''} ${row.apellidos || ''} ${row.cedula_numero || ''}`)
-    return searchTerms.every((term) => haystack.includes(term))
-  })
+  const matches = findPersonalMatches(activos, searchTerms)
 
   if (matches.length === 0) {
     return {
@@ -478,10 +554,7 @@ const runPersonalPaymentLookupTool = async (message: string): Promise<ToolRunRes
     }
   }
 
-  const matches = activos.filter((row) => {
-    const haystack = normalizeForSearch(`${row.nombres || ''} ${row.apellidos || ''} ${row.cedula_numero || ''}`)
-    return searchTerms.every((term) => haystack.includes(term))
-  })
+  const matches = findPersonalMatches(activos, searchTerms)
 
   if (matches.length === 0) {
     return {

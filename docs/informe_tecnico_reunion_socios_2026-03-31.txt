@@ -1,0 +1,218 @@
+INFORME TECNICO - PLATAFORMA ACADEMIA NACIONAL DE AJEDREZ
+Fecha: 2026-03-31
+Destinatarios: Junta de socios
+Version: 1.0
+
+OBJETIVO DEL DOCUMENTO
+Este informe resume, de forma simple pero detallada, la arquitectura tecnica del sistema y el funcionamiento por modulos para soportar decisiones de operacion, crecimiento y control.
+
+==================================================
+PARTE 1. ARQUITECTURA Y PARAMETROS TECNICOS
+==================================================
+
+1) Stack principal
+- Frontend y capa de aplicacion: Next.js 16 + React 19 + TypeScript.
+- UI: Tailwind CSS (estructura y estilos de paneles de gestion).
+- Base de datos y servicios backend: Supabase (PostgreSQL, Auth, Storage, API REST).
+- Cliente de datos: @supabase/supabase-js.
+
+2) Arquitectura por capas
+- Capa de presentacion:
+  - Rutas en App Router de Next.js (src/app/*).
+  - Pantallas de negocio para Gestion, Operaciones y Reportes.
+- Capa de logica de aplicacion:
+  - Componentes y funciones de carga/guardado en paginas cliente.
+  - API routes para funciones especiales del agente IA (src/app/api/agente/*).
+- Capa de datos:
+  - Tablas transaccionales en Supabase (alumnos, representantes, ingresos, egresos, nomina, proveedores, etc.).
+  - Storage para documentos (ejemplo: alumnos-documentos, personal-documentos).
+
+3) Seguridad y control de acceso
+- Autenticacion central en Supabase Auth.
+- Control de rol por tabla user_roles.
+- Politica de solo lectura para rol operador en cliente Supabase:
+  - Se interceptan peticiones de escritura (REST y Storage write endpoints).
+  - Si rol = operador, el sistema bloquea INSERT/UPDATE/DELETE y responde 403.
+- Endurecimiento progresivo via migraciones SQL (incluye politicas y grants RLS en lotes anteriores del repositorio).
+
+4) Configuracion tecnica requerida (entorno)
+- Variables publicas (cliente):
+  - NEXT_PUBLIC_SUPABASE_URL
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY
+- Variables backend para agente IA:
+  - SUPABASE_SERVICE_ROLE_KEY
+  - AI_AGENT_PROVIDER_MODE (gemini | local | hybrid)
+  - GEMINI_API_KEY (si aplica)
+  - AI_AGENT_GEMINI_MODEL (opcional, por defecto gemini-2.5-flash)
+  - AI_AGENT_LOCAL_URL (si aplica)
+  - AI_AGENT_TIMEOUT_MS (timeout de llamadas)
+
+5) Estrategia de cambios de esquema y trazabilidad
+- La aplicacion usa migraciones SQL versionadas (carpeta sql_migrations).
+- Patron: cambios incrementales e idempotentes cuando aplica.
+- Beneficio para socios:
+  - Menor riesgo de perdida de informacion.
+  - Historial auditable de cada cambio estructural.
+  - Posibilidad de rollback operativo por versionado.
+
+6) Parametros operativos observables
+- Ano escolar de trabajo modelado por periodo YYYY-MM y ciclos Sep-Ago.
+- Modulos financieros consumen y consolidan movimientos por cuenta, categoria y periodo.
+- Nomina separa base, descuentos, extras, arrastres y estado de pago por periodo.
+- Reportes trabajan en modo consulta y permiten compartir enlace con periodo seleccionado.
+
+7) IA interna (agente) - arquitectura resumida
+- Endpoint de salud: /api/agente/health.
+- Endpoint de chat: /api/agente/chat.
+- Flujo:
+  1. valida sesion/usuario,
+  2. resuelve rol y dominios permitidos,
+  3. detecta dominio de consulta,
+  4. ejecuta herramienta de datos del dominio,
+  5. compone respuesta por proveedor IA (gemini/local/hibrido) con fallback seguro.
+- Politica de dominios por rol:
+  - admin: acceso total.
+  - operativo: ingresos, egresos, clientes, proveedores, reportes.
+  - consulta: solo reportes.
+  - gestion_personal: personal, nomina, reportes.
+  - operador: acceso funcional total con restricciones de escritura en cliente.
+
+==================================================
+PARTE 2. DESCRIPCION TECNICA POR MODULO Y FUNCIONAMIENTO
+==================================================
+
+A) MODULO GESTION (hub administrativo)
+Funcion:
+- Punto de entrada de configuracion y mantenimiento del negocio.
+Submodulos principales:
+- Personal
+- Clientes
+- Proveedores
+- Socios
+- Nomina
+- Agente IA
+Resultado tecnico:
+- Centraliza catalogos maestros y procesos de registro/edicion.
+
+B) MODULO GESTION DE PERSONAL
+Funcion:
+- Expediente integral del personal docente y administrativo.
+Capacidades:
+- Alta/edicion/busqueda por datos personales y laborales.
+- Manejo de estados (activo, cesado, eliminado) con logica de papelera.
+- Datos de pago (banco y pago movil).
+- Documentacion digital en Storage (foto carnet, certificados, RIF, soportes academicos).
+- Asignaciones por sede y apoyo a agrupacion para nomina.
+Valor operativo:
+- Reduce dispersion documental y acelera procesos de pago y seguimiento.
+
+C) MODULO CLIENTES
+Funcion:
+- Gestion comercial y operativa de servicios B2B y B2C.
+Submodulos:
+1. Colegios: convenios y estructura de clientes institucionales.
+2. Clubes: acuerdos con base variable.
+3. Catalogo Tardes: configuracion de grupos/sedes.
+4. Catalogo VIP/Particulares: servicios virtuales y 1 a 1.
+5. Centro Familiar (operacion principal B2C):
+   - registro y edicion de representantes,
+   - registro y edicion de alumnos,
+   - inscripciones por clase,
+   - estado de cuenta por familia.
+Mejoras tecnicas recientes incorporadas:
+- Representante: campos secundarios de contacto y representante 2.
+- Alumno: cedula, pasaporte, colegio, grado, horario y fecha de inscripcion.
+- Soportes: carga de imagen de cedula/pasaporte en Storage.
+- Operacion comercial: descuento porcentual por inscripcion (por clase/alumno) aplicado al calculo mensual.
+- Calidad de datos: opcion de eliminacion de alumno duplicado bajo confirmacion.
+Valor operativo:
+- Mayor precision administrativa por familia y trazabilidad de cobros.
+
+D) MODULO PROVEEDORES
+Funcion:
+- Catalogo y administracion del ecosistema de proveedores.
+Capacidades:
+- CRUD de proveedor (datos fiscales, contacto, condiciones de pago).
+- Estado activo/inactivo.
+- Destino contable de egresos (administrativo, operativo, proveedores).
+- Busqueda y filtros para control de cartera.
+Valor operativo:
+- Mejora consistencia entre compras y contabilidad de egresos.
+
+E) MODULO SOCIOS
+Funcion:
+- Capa de supervision financiera y analitica para socios.
+Submodulos:
+1. Registro:
+   - consulta mensual de cuentas,
+   - trazabilidad de ingresos/egresos,
+   - consolidacion por rubros,
+   - analitica de tendencia y distribucion escolar.
+2. Logs:
+   - seguimiento de actividad de trabajo por usuario.
+3. Agente IA:
+   - consultas internas con datos del sistema, controladas por dominio y rol.
+Valor operativo:
+- Da visibilidad ejecutiva continua de salud economica y operativa.
+
+F) MODULO NOMINA
+Funcion:
+- Liquidacion mensual por persona y por periodo escolar.
+Capacidades:
+- Construccion de nomina por periodo YYYY-MM.
+- Clasificacion docente/administrativo.
+- Ajustes por inasistencias, cantina, extras y comentarios.
+- Calculo de neto, arrastre, adelantos y saldo final.
+- Estado de pago (pendiente/saldado/vencido) y soporte para contacto WhatsApp.
+Valor operativo:
+- Estandariza pago de personal con mejor control de deuda y evidencias.
+
+G) MODULO OPERACIONES
+Funcion:
+- Registro diario de movimientos economicos y agenda operativa.
+Submodulos:
+1. Ingresos: entradas por categoria/cuenta.
+2. Egresos: salidas por proveedores, nomina y gastos operativos.
+3. Horarios: planificacion de grupos y personal.
+Valor operativo:
+- Origen de datos transaccionales para reporte financiero y de socios.
+
+H) MODULO REPORTES (solo lectura)
+Funcion:
+- Visualizacion de indicadores y reporteria consolidada.
+Capacidades:
+- Seleccion de periodo escolar activo o historico.
+- Navegacion en modo consulta, sin escritura.
+- Enlace compartible con periodo seleccionado para comites o revision.
+Valor operativo:
+- Facilita control y auditoria interna sin exponer operaciones de edicion.
+
+I) MODULO AGENTE IA INTERNO
+Funcion:
+- Asistencia consultiva con datos internos por dominios autorizados.
+Mecanismos tecnicos:
+- Politica de acceso por dominio segun rol.
+- Estado de salud del modulo y disponibilidad de proveedor IA.
+- Fallback de respuesta cuando proveedor externo/local no esta disponible.
+- Persistencia de conversaciones y mensajes para continuidad de contexto.
+Valor operativo:
+- Disminuye tiempo de consulta interna para socios y coordinacion.
+
+==================================================
+CIERRE EJECUTIVO
+==================================================
+
+Estado general
+- La plataforma esta estructurada por modulos de negocio claros y conectados a una base de datos central.
+- El esquema de seguridad combina autenticacion, roles y restricciones de escritura.
+- La operacion financiera esta alineada a ciclos de ano escolar y periodos mensuales.
+
+Fortalezas actuales
+- Alta trazabilidad de cambios (migraciones SQL).
+- Consolidacion operativa (clientes, personal, nomina, operaciones, reportes).
+- Capacidad de analitica y consulta asistida por IA con controles de permisos.
+
+Recomendacion tecnica para la junta
+- Mantener la disciplina de migraciones versionadas y revisiones por modulo.
+- Seguir fortaleciendo monitoreo de calidad de datos y pruebas de regresion por ciclo mensual.
+- Priorizar tableros ejecutivos por KPI para reunion de cierre de cada periodo escolar.

@@ -46,6 +46,17 @@ type ActivityFetchResult = {
   notice: string
 }
 
+type TrackerDiagnostics = {
+  enabled: boolean
+  disabledReason: string | null
+  lastAttemptAt: string | null
+  lastSuccessAt: string | null
+  lastErrorCode: string | null
+  lastErrorMessage: string | null
+  lastEventType: 'page_view' | 'heartbeat' | null
+  lastRoute: string | null
+}
+
 const PERIOD_OPTIONS = [
   { value: 7, label: 'Últimos 7 días' },
   { value: 30, label: 'Últimos 30 días' },
@@ -54,8 +65,18 @@ const PERIOD_OPTIONS = [
 
 const BUCKET_MINUTES = 5
 const MAX_ROWS = 5000
+const TRACKER_STATUS_STORAGE_KEY = 'app_activity_tracker_status'
+const LIVE_ONLINE_MINUTES = 15
+const LIVE_IDLE_MINUTES = 60
 
 const round1 = (value: number) => Math.round(value * 10) / 10
+
+const formatDateInput = (value: Date) => {
+  const year = value.getFullYear()
+  const month = String(value.getMonth() + 1).padStart(2, '0')
+  const day = String(value.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 const formatDateShort = (ymd: string) => {
   const parsed = new Date(`${ymd}T00:00:00`)
@@ -90,22 +111,138 @@ const getErrorText = (error: unknown) => {
   return 'No se pudo cargar la actividad.'
 }
 
+const csvEscape = (value: string | number | null | undefined) => {
+  const raw = value == null ? '' : String(value)
+  if (raw.includes(',') || raw.includes('"') || raw.includes('\n')) {
+    return `"${raw.replace(/"/g, '""')}"`
+  }
+  return raw
+}
+
+const downloadCsv = (filename: string, rows: string[][]) => {
+  if (typeof window === 'undefined') return
+  const csv = rows.map((line) => line.map(csvEscape).join(',')).join('\n')
+  const blob = new Blob([`\ufeff${csv}`], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', filename)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+const getLiveStatus = (lastSeenAt: number, nowTs: number) => {
+  const diffMinutes = Math.max(0, Math.round((nowTs - lastSeenAt) / 60000))
+
+  if (diffMinutes <= LIVE_ONLINE_MINUTES) {
+    return { label: 'ACTIVO', dotClass: 'bg-emerald-500', textClass: 'text-emerald-700', borderClass: 'border-emerald-200 bg-emerald-50' }
+  }
+
+  if (diffMinutes <= LIVE_IDLE_MINUTES) {
+    return { label: 'INACTIVO RECIENTE', dotClass: 'bg-amber-500', textClass: 'text-amber-700', borderClass: 'border-amber-200 bg-amber-50' }
+  }
+
+  return { label: 'DESCONECTADO', dotClass: 'bg-gray-400', textClass: 'text-gray-600', borderClass: 'border-gray-200 bg-gray-50' }
+}
+
 export default function SociosLogsPage() {
   const router = useRouter()
   const [periodDays, setPeriodDays] = useState(30)
+  const [rangeMode, setRangeMode] = useState<'preset' | 'custom'>('preset')
+  const [customFromDate, setCustomFromDate] = useState(() => formatDateInput(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)))
+  const [customToDate, setCustomToDate] = useState(() => formatDateInput(new Date()))
   const [rows, setRows] = useState<ActivityRow[]>([])
   const [manualSelectedUserId, setManualSelectedUserId] = useState('')
+  const [roleFilter, setRoleFilter] = useState('todos')
+  const [userFilter, setUserFilter] = useState('todos')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [trackerDiagnostics, setTrackerDiagnostics] = useState<TrackerDiagnostics | null>(null)
+  const [nowTs, setNowTs] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setNowTs(Date.now()), 60 * 1000)
+    return () => window.clearInterval(timerId)
+  }, [])
+
+  useEffect(() => {
+    const parseTrackerDiagnostics = (value: string | null) => {
+      if (!value) return null
+
+      try {
+        const parsed = JSON.parse(value) as Partial<TrackerDiagnostics>
+        return {
+          enabled: parsed.enabled !== false,
+          disabledReason: typeof parsed.disabledReason === 'string' ? parsed.disabledReason : null,
+          lastAttemptAt: typeof parsed.lastAttemptAt === 'string' ? parsed.lastAttemptAt : null,
+          lastSuccessAt: typeof parsed.lastSuccessAt === 'string' ? parsed.lastSuccessAt : null,
+          lastErrorCode: typeof parsed.lastErrorCode === 'string' ? parsed.lastErrorCode : null,
+          lastErrorMessage: typeof parsed.lastErrorMessage === 'string' ? parsed.lastErrorMessage : null,
+          lastEventType: parsed.lastEventType === 'page_view' || parsed.lastEventType === 'heartbeat' ? parsed.lastEventType : null,
+          lastRoute: typeof parsed.lastRoute === 'string' ? parsed.lastRoute : null,
+        }
+      } catch {
+        return null
+      }
+    }
+
+    const syncTrackerDiagnostics = () => {
+      if (typeof window === 'undefined') return
+      setTrackerDiagnostics(parseTrackerDiagnostics(window.localStorage.getItem(TRACKER_STATUS_STORAGE_KEY)))
+    }
+
+    syncTrackerDiagnostics()
+
+    const onStatus = () => syncTrackerDiagnostics()
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === TRACKER_STATUS_STORAGE_KEY) syncTrackerDiagnostics()
+    }
+
+    window.addEventListener('app-activity-tracker-status', onStatus)
+    window.addEventListener('storage', onStorage)
+
+    return () => {
+      window.removeEventListener('app-activity-tracker-status', onStatus)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
 
   const consultarActividad = useCallback(async (): Promise<ActivityFetchResult> => {
-    const fromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
+    let fromDate: string
+    let toDate: string
+
+    if (rangeMode === 'custom') {
+      if (!customFromDate || !customToDate) {
+        return {
+          rows: [],
+          error: 'Define fecha inicial y final para el rango personalizado.',
+          notice: '',
+        }
+      }
+
+      if (customFromDate > customToDate) {
+        return {
+          rows: [],
+          error: 'La fecha inicial no puede ser mayor que la fecha final.',
+          notice: '',
+        }
+      }
+
+      fromDate = `${customFromDate}T00:00:00.000Z`
+      toDate = `${customToDate}T23:59:59.999Z`
+    } else {
+      fromDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
+      toDate = new Date().toISOString()
+    }
 
     const { data, error: queryError, count } = await supabase
       .from('app_user_activity_logs')
       .select('user_id, user_email, role_code, route, event_type, session_id, created_at, client_ts', { count: 'exact' })
       .gte('created_at', fromDate)
+      .lte('created_at', toDate)
       .order('created_at', { ascending: false })
       .limit(MAX_ROWS)
 
@@ -140,7 +277,7 @@ export default function SociosLogsPage() {
       error: '',
       notice: nextNotice,
     }
-  }, [periodDays])
+  }, [customFromDate, customToDate, periodDays, rangeMode])
 
   const aplicarResultado = (result: ActivityFetchResult) => {
     setRows(result.rows)
@@ -300,26 +437,41 @@ export default function SociosLogsPage() {
     }
   }, [rows])
 
-  const selectedUserId = useMemo(() => {
-    if (!summaries.length) return ''
-    const existeSeleccion = summaries.some((user) => user.userId === manualSelectedUserId)
-    return existeSeleccion ? manualSelectedUserId : summaries[0].userId
-  }, [manualSelectedUserId, summaries])
-
-  const selectedUser = useMemo(() => {
-    return summaries.find((item) => item.userId === selectedUserId) || summaries[0] || null
-  }, [summaries, selectedUserId])
-
-  const maxHours = useMemo(() => {
-    if (!summaries.length) return 1
-    return Math.max(...summaries.map((user) => user.activeHours), 1)
+  const roleOptions = useMemo(() => {
+    const values = Array.from(new Set(summaries.map((item) => (item.roleCode || 'sin rol').toLowerCase())))
+    values.sort((a, b) => a.localeCompare(b, 'es'))
+    return values
   }, [summaries])
 
+  const filteredSummaries = useMemo(() => {
+    return summaries.filter((item) => {
+      const roleValue = (item.roleCode || 'sin rol').toLowerCase()
+      const roleOk = roleFilter === 'todos' || roleValue === roleFilter
+      const userOk = userFilter === 'todos' || item.userId === userFilter
+      return roleOk && userOk
+    })
+  }, [roleFilter, summaries, userFilter])
+
+  const selectedUserId = useMemo(() => {
+    if (!filteredSummaries.length) return ''
+    const existeSeleccion = filteredSummaries.some((user) => user.userId === manualSelectedUserId)
+    return existeSeleccion ? manualSelectedUserId : filteredSummaries[0].userId
+  }, [filteredSummaries, manualSelectedUserId])
+
+  const selectedUser = useMemo(() => {
+    return filteredSummaries.find((item) => item.userId === selectedUserId) || filteredSummaries[0] || null
+  }, [filteredSummaries, selectedUserId])
+
+  const maxHours = useMemo(() => {
+    if (!filteredSummaries.length) return 1
+    return Math.max(...filteredSummaries.map((user) => user.activeHours), 1)
+  }, [filteredSummaries])
+
   const dashboard = useMemo(() => {
-    const totalUsers = summaries.length
-    const totalHours = round1(summaries.reduce((acc, user) => acc + user.activeHours, 0))
-    const totalPageViews = summaries.reduce((acc, user) => acc + user.pageViews, 0)
-    const totalEvents = summaries.reduce((acc, user) => acc + user.totalEvents, 0)
+    const totalUsers = filteredSummaries.length
+    const totalHours = round1(filteredSummaries.reduce((acc, user) => acc + user.activeHours, 0))
+    const totalPageViews = filteredSummaries.reduce((acc, user) => acc + user.pageViews, 0)
+    const totalEvents = filteredSummaries.reduce((acc, user) => acc + user.totalEvents, 0)
     const avgHoursPerUser = totalUsers > 0 ? round1(totalHours / totalUsers) : 0
 
     return {
@@ -327,10 +479,56 @@ export default function SociosLogsPage() {
       totalHours,
       totalPageViews,
       totalEvents,
-      totalActiveDays: globalActiveDays,
+      totalActiveDays: totalUsers > 0 ? globalActiveDays : 0,
       avgHoursPerUser,
     }
-  }, [globalActiveDays, summaries])
+  }, [filteredSummaries, globalActiveDays])
+
+  const exportResumenCsv = () => {
+    const rowsCsv: string[][] = [
+      ['usuario_email', 'user_id', 'rol', 'estado_conexion', 'primera_actividad', 'ultima_actividad', 'dias_conectados', 'horas_activas', 'promedio_horas_dia', 'conexiones', 'eventos'],
+      ...filteredSummaries.map((item) => {
+        const live = getLiveStatus(item.lastSeenAt, nowTs)
+        return [
+          getUserLabel(item),
+          item.userId,
+          item.roleCode || 'sin rol',
+          live.label,
+          formatDateTime(item.firstSeenAt),
+          formatDateTime(item.lastSeenAt),
+          String(item.activeDays),
+          String(item.activeHours),
+          String(item.avgHoursPerDay),
+          String(item.pageViews),
+          String(item.totalEvents),
+        ]
+      }),
+    ]
+
+    downloadCsv('logs-resumen-usuarios.csv', rowsCsv)
+  }
+
+  const exportDetalleCsv = () => {
+    const rowsCsv: string[][] = [
+      ['usuario_email', 'user_id', 'rol', 'dia', 'horas_activas', 'conexiones', 'eventos'],
+    ]
+
+    for (const item of filteredSummaries) {
+      for (const daily of item.daily) {
+        rowsCsv.push([
+          getUserLabel(item),
+          item.userId,
+          item.roleCode || 'sin rol',
+          daily.day,
+          String(daily.hours),
+          String(daily.pageViews),
+          String(daily.events),
+        ])
+      }
+    }
+
+    downloadCsv('logs-detalle-diario.csv', rowsCsv)
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-white via-gray-50 to-gray-100 px-6 py-10 md:px-10">
@@ -358,6 +556,16 @@ export default function SociosLogsPage() {
 
             <div className="flex flex-wrap items-center gap-3">
               <select
+                value={rangeMode}
+                onChange={(event) => setRangeMode(event.target.value as 'preset' | 'custom')}
+                className="h-11 rounded-2xl border border-gray-300 bg-white px-4 text-sm font-black text-black shadow-sm"
+              >
+                <option value="preset">Rango rápido</option>
+                <option value="custom">Rango personalizado</option>
+              </select>
+
+              {rangeMode === 'preset' && (
+              <select
                 value={periodDays}
                 onChange={(event) => setPeriodDays(Number(event.target.value))}
                 className="h-11 rounded-2xl border border-gray-300 bg-white px-4 text-sm font-black text-black shadow-sm"
@@ -366,6 +574,62 @@ export default function SociosLogsPage() {
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </select>
+              )}
+
+              {rangeMode === 'custom' && (
+                <>
+                  <input
+                    type="date"
+                    value={customFromDate}
+                    onChange={(event) => setCustomFromDate(event.target.value)}
+                    className="h-11 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-black text-black shadow-sm"
+                  />
+                  <input
+                    type="date"
+                    value={customToDate}
+                    onChange={(event) => setCustomToDate(event.target.value)}
+                    className="h-11 rounded-2xl border border-gray-300 bg-white px-3 text-sm font-black text-black shadow-sm"
+                  />
+                </>
+              )}
+
+              <select
+                value={roleFilter}
+                onChange={(event) => setRoleFilter(event.target.value)}
+                className="h-11 rounded-2xl border border-gray-300 bg-white px-4 text-sm font-black text-black shadow-sm"
+              >
+                <option value="todos">Todos los roles</option>
+                {roleOptions.map((role) => (
+                  <option key={role} value={role}>{role.toUpperCase()}</option>
+                ))}
+              </select>
+
+              <select
+                value={userFilter}
+                onChange={(event) => setUserFilter(event.target.value)}
+                className="h-11 rounded-2xl border border-gray-300 bg-white px-4 text-sm font-black text-black shadow-sm"
+              >
+                <option value="todos">Todos los usuarios</option>
+                {summaries.map((item) => (
+                  <option key={item.userId} value={item.userId}>{getUserLabel(item)}</option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={exportResumenCsv}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-4 text-[11px] font-black uppercase tracking-[0.12em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black"
+              >
+                CSV Resumen
+              </button>
+
+              <button
+                type="button"
+                onClick={exportDetalleCsv}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-gray-300 bg-white px-4 text-[11px] font-black uppercase tracking-[0.12em] text-gray-700 shadow-sm transition-all hover:border-black hover:text-black"
+              >
+                CSV Diario
+              </button>
 
               <button
                 type="button"
@@ -388,6 +652,18 @@ export default function SociosLogsPage() {
             <p className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-black uppercase tracking-[0.1em] text-amber-700">
               ⚠️ {notice}
             </p>
+          )}
+
+          {!error && rows.length === 0 && trackerDiagnostics && trackerDiagnostics.lastErrorMessage && (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[11px] font-black tracking-[0.08em] text-red-700">
+              <p className="uppercase">Tracker sin escritura en base de datos</p>
+              <p className="mt-1 normal-case font-bold">{trackerDiagnostics.lastErrorMessage}</p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.1em]">
+                Código: {trackerDiagnostics.lastErrorCode || 'N/A'}
+                {' · '}
+                Último intento: {trackerDiagnostics.lastAttemptAt ? formatDateTime(Date.parse(trackerDiagnostics.lastAttemptAt)) : 'N/A'}
+              </p>
+            </div>
           )}
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
@@ -422,15 +698,16 @@ export default function SociosLogsPage() {
               <h2 className="mb-3 text-sm font-black uppercase tracking-[0.12em] text-gray-600">Usuarios</h2>
 
               <div className="space-y-2">
-                {summaries.length === 0 && (
+                {filteredSummaries.length === 0 && (
                   <div className="rounded-xl border border-dashed border-gray-300 bg-white p-4 text-center text-xs text-gray-500">
                     Sin actividad para mostrar.
                   </div>
                 )}
 
-                {summaries.map((user) => {
+                {filteredSummaries.map((user) => {
                   const selected = selectedUser?.userId === user.userId
                   const widthPercent = Math.max(8, Math.round((user.activeHours / maxHours) * 100))
+                  const live = getLiveStatus(user.lastSeenAt, nowTs)
                   return (
                     <button
                       key={user.userId}
@@ -448,6 +725,11 @@ export default function SociosLogsPage() {
                         <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase ${selected ? 'bg-white text-black' : 'bg-gray-100 text-gray-600'}`}>
                           {user.intensity}
                         </span>
+                      </div>
+
+                      <div className={`mt-2 inline-flex items-center gap-2 rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${live.borderClass} ${live.textClass}`}>
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${live.dotClass}`} />
+                        {live.label}
                       </div>
 
                       <div className="mt-2 grid grid-cols-3 gap-2 text-[10px] font-black uppercase tracking-[0.08em]">
@@ -477,15 +759,25 @@ export default function SociosLogsPage() {
 
               {selectedUser && (
                 <>
+                  {(() => {
+                    const live = getLiveStatus(selectedUser.lastSeenAt, nowTs)
+                    return (
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-2xl font-black text-black">{getUserLabel(selectedUser)}</p>
                       <p className="text-[11px] font-black uppercase tracking-[0.1em] text-gray-500">{selectedUser.roleCode || 'sin rol asignado'}</p>
                     </div>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-gray-600">
-                      <Gauge size={12} /> Intensidad {selectedUser.intensity}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] ${live.borderClass} ${live.textClass}`}>
+                        <span className={`inline-block h-2 w-2 rounded-full ${live.dotClass}`} /> {live.label}
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-gray-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.1em] text-gray-600">
+                        <Gauge size={12} /> Intensidad {selectedUser.intensity}
+                      </div>
                     </div>
                   </div>
+                    )
+                  })()}
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
