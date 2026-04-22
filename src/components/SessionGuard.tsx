@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import AppActivityTracker from '@/components/AppActivityTracker'
 
-type RoleCode = 'admin' | 'operativo' | 'consulta' | 'gestion_personal' | 'operador'
+type RoleCode = 'admin' | 'operativo' | 'consulta' | 'gestion_personal' | 'operador' | 'horario'
 
 type AccessRule = {
   type: 'exact' | 'prefix'
@@ -34,6 +34,7 @@ const ROLE_HOME_ROUTE: Record<RoleCode, string> = {
   consulta: '/reportes',
   gestion_personal: '/gestion',
   operador: '/gestion',
+  horario: '/gestion',
 }
 
 const ROLE_ACCESS_RULES: Record<RoleCode, AccessRule[]> = {
@@ -62,10 +63,14 @@ const ROLE_ACCESS_RULES: Record<RoleCode, AccessRule[]> = {
     { type: 'prefix', path: '/operaciones' },
     { type: 'prefix', path: '/reportes' },
   ],
+  horario: [
+    { type: 'exact', path: '/gestion' },
+    { type: 'prefix', path: '/gestion/clientes/tardes' },
+  ],
 }
 
 const normalizeRoleCode = (value?: string | null): RoleCode => {
-  if (value === 'operativo' || value === 'consulta' || value === 'admin' || value === 'gestion_personal' || value === 'operador') {
+  if (value === 'operativo' || value === 'consulta' || value === 'admin' || value === 'gestion_personal' || value === 'operador' || value === 'horario') {
     return value
   }
 
