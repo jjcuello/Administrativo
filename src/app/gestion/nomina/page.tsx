@@ -1112,6 +1112,8 @@ export default function GestionNominaPage() {
       .select('id')
       .eq('periodo_ym', periodoNomina)
       .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (nominaPeriodoError) {
@@ -1797,6 +1799,8 @@ export default function GestionNominaPage() {
         .select('id')
         .eq('periodo_ym', periodoNomina)
         .is('deleted_at', null)
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle()
 
       if (existenteError) {

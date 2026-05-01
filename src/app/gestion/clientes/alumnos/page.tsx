@@ -594,16 +594,17 @@ export default function GestionFamilias() {
         .update(payload)
         .eq('id', repSeleccionado.id)
         .select('*')
-        .single()
+        .limit(1)
       if (error) {
         setMensaje('❌ ' + error.message)
         setCargando(false)
         return
       }
-      if (data) {
+      const repActualizado = Array.isArray(data) ? data[0] : null
+      if (repActualizado) {
         setRepSeleccionado((prev) => ({
           ...(prev || {}),
-          ...(data as Representante),
+          ...(repActualizado as Representante),
           alumnos: prev?.alumnos || [],
         }))
       }
@@ -620,21 +621,23 @@ export default function GestionFamilias() {
         representante2_telefono: formRep.representante2_telefono,
         estado: 'activo',
       }
-      const { data, error } = await supabase.from('representantes').insert([payload]).select().single()
+      const { data, error } = await supabase.from('representantes').insert([payload]).select().limit(1)
       if (error) {
         setMensaje('❌ ' + error.message)
         setCargando(false)
         return
       }
 
-      if (data?.id && titularEsAlumno) {
+      const representanteCreado = Array.isArray(data) ? data[0] : null
+
+      if (representanteCreado?.id && titularEsAlumno) {
         const payloadTitularAlumno = {
           nombres: formRep.nombres,
           apellidos: formRep.apellidos,
           fecha_nacimiento: fechaNacimientoTitularAlumno || null,
           condiciones_medicas: '',
           talla_uniforme: '',
-          representante_id: data.id,
+          representante_id: representanteCreado.id,
           estado: 'activo',
         }
 
@@ -647,8 +650,8 @@ export default function GestionFamilias() {
         }
       }
 
-      if(data) {
-        setRepSeleccionado({...data, alumnos: []})
+      if(representanteCreado) {
+        setRepSeleccionado({...representanteCreado, alumnos: []})
         setMensaje(titularEsAlumno ? '✅ Familia creada y titular agregado como alumno' : '✅ Familia creada')
       }
     }
@@ -700,15 +703,16 @@ export default function GestionFamilias() {
         .update(payload)
         .eq('id', alumnoEditandoId)
         .select()
-        .single()
+        .limit(1)
       if (error) {
         setMensaje('❌ ' + error.message)
         setCargando(false)
         return
       }
-      if (data) {
+      const alumnoActualizado = Array.isArray(data) ? data[0] : null
+      if (alumnoActualizado) {
         const actualizados = (repSeleccionado.alumnos || []).map((alumno) => (
-          alumno.id === alumnoEditandoId ? { ...alumno, ...data } : alumno
+          alumno.id === alumnoEditandoId ? { ...alumno, ...alumnoActualizado } : alumno
         ))
         setRepSeleccionado({ ...repSeleccionado, alumnos: actualizados })
       }
@@ -718,23 +722,26 @@ export default function GestionFamilias() {
         ...payloadBase,
         cedula_identidad_imagen_path: null,
         pasaporte_imagen_path: null,
-      }]).select().single()
+      }]).select().limit(1)
       if (error) {
         setMensaje('❌ ' + error.message)
         setCargando(false)
         return
       }
 
-      if (data?.id && (cedulaImagenFile || pasaporteImagenFile)) {
+      const alumnoCreado = Array.isArray(data) ? data[0] : null
+
+      if (alumnoCreado?.id && (cedulaImagenFile || pasaporteImagenFile)) {
         try {
           const patchDocs: { cedula_identidad_imagen_path?: string; pasaporte_imagen_path?: string } = {}
-          if (cedulaImagenFile) patchDocs.cedula_identidad_imagen_path = await subirArchivoAlumnoStorage(data.id, 'cedula', cedulaImagenFile)
-          if (pasaporteImagenFile) patchDocs.pasaporte_imagen_path = await subirArchivoAlumnoStorage(data.id, 'pasaporte', pasaporteImagenFile)
+          if (cedulaImagenFile) patchDocs.cedula_identidad_imagen_path = await subirArchivoAlumnoStorage(alumnoCreado.id, 'cedula', cedulaImagenFile)
+          if (pasaporteImagenFile) patchDocs.pasaporte_imagen_path = await subirArchivoAlumnoStorage(alumnoCreado.id, 'pasaporte', pasaporteImagenFile)
           if (Object.keys(patchDocs).length) {
-            const { data: alumnoConDocs } = await supabase.from('alumnos').update(patchDocs).eq('id', data.id).select().single()
+            const { data: alumnoConDocsRows } = await supabase.from('alumnos').update(patchDocs).eq('id', alumnoCreado.id).select().limit(1)
+            const alumnoConDocs = Array.isArray(alumnoConDocsRows) ? alumnoConDocsRows[0] : null
             if (alumnoConDocs) {
-              data.cedula_identidad_imagen_path = alumnoConDocs.cedula_identidad_imagen_path
-              data.pasaporte_imagen_path = alumnoConDocs.pasaporte_imagen_path
+              alumnoCreado.cedula_identidad_imagen_path = alumnoConDocs.cedula_identidad_imagen_path
+              alumnoCreado.pasaporte_imagen_path = alumnoConDocs.pasaporte_imagen_path
             }
           }
         } catch (errorSubida) {
@@ -742,8 +749,8 @@ export default function GestionFamilias() {
         }
       }
 
-      if(data) {
-        const nuevos = [...(repSeleccionado.alumnos || []), data]
+      if(alumnoCreado) {
+        const nuevos = [...(repSeleccionado.alumnos || []), alumnoCreado]
         setRepSeleccionado({...repSeleccionado, alumnos: nuevos})
       }
       setMensaje('✅ Alumno agregado')

@@ -38,6 +38,7 @@ const ORDEN_CUENTAS_PREFERIDO = [
 const CATEGORIAS_INGRESO_FIJAS: CategoriaIngresoSeed[] = [
   { nombre: 'Mañana', descripcion: 'Ingresos asociados al turno de mañana' },
   { nombre: 'Tarde', descripcion: 'Ingresos asociados al turno de tarde' },
+  { nombre: 'Torneo', descripcion: 'Ingresos asociados a torneos y eventos competitivos' },
   { nombre: 'Nucleo', descripcion: 'Ingresos por actividades de núcleo' },
   { nombre: 'Particulares', descripcion: 'Ingresos por clases particulares' },
   { nombre: 'Virtuales', descripcion: 'Ingresos por clases virtuales' },

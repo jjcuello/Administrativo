@@ -54,19 +54,55 @@ type InteractionState = {
 const DAYS = ['Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes']
 const START_MINUTES = 6 * 60 + 45
 const END_MINUTES = 15 * 60 + 30
-const SLOT_MINUTES = 15
+const SLOT_MINUTES = 5
 const SLOT_COUNT = Math.round((END_MINUTES - START_MINUTES) / SLOT_MINUTES)
 const DEPARTURE_SLOT = SLOT_COUNT - 1
-const SLOT_HEIGHT = 26
+const SLOT_HEIGHT = 10
+const MAJOR_LINE_MINUTES = 15
+const LEGACY_SLOT_MINUTES = 15
 
 const COLOR_PALETTE = [
-  '#93c5fd',
-  '#fcd34d',
-  '#86efac',
-  '#fca5a5',
-  '#c4b5fd',
-  '#67e8f9',
-  '#fbbf24',
+  '#d7e5d4',
+  '#f2c8c3',
+  '#f1cfb4',
+  '#d6e8bf',
+  '#cde4ef',
+  '#cad7d8',
+  '#e3cfe7',
+  '#3d3d3d',
+  '#a60c0c',
+  '#6f470d',
+  '#4d422f',
+  '#1d7d53',
+  '#1f5ea8',
+  '#2d6473',
+  '#6b3d90',
+  '#ddc15a',
+  '#56d891',
+  '#59d7cb',
+  '#e64fa4',
+]
+
+const COLEGIO_COLOR_RULES: Array<{ includes: string[]; color: string }> = [
+  { includes: ['andres bello'], color: '#d7e5d4' },
+  { includes: ['academia merici', 'merici'], color: '#f2c8c3' },
+  { includes: ['fundacion venezolana', 'fundacion venez'], color: '#f1cfb4' },
+  { includes: ['colegio integral', 'integral el avila', 'integral'], color: '#d6e8bf' },
+  { includes: ['las cumbres i'], color: '#cde4ef' },
+  { includes: ['las cumbres ii'], color: '#cad7d8' },
+  { includes: ['carlos sublette', 'colegio carlos'], color: '#e3cfe7' },
+  { includes: ['santa maria'], color: '#3d3d3d' },
+  { includes: ['el penon', 'peñon'], color: '#a60c0c' },
+  { includes: ['maestro simon'], color: '#6f470d' },
+  { includes: ['juan de dios guanche', 'juan de dios'], color: '#4d422f' },
+  { includes: ['my spot'], color: '#1d7d53' },
+  { includes: ['sion'], color: '#1f5ea8' },
+  { includes: ['semillita sunflower', 'semillita'], color: '#2d6473' },
+  { includes: ['santo tomas de aquino', 'santo tomas'], color: '#6b3d90' },
+  { includes: ['instituto cumbres de caracas', 'cumbres de caracas'], color: '#ddc15a' },
+  { includes: ['washington'], color: '#56d891' },
+  { includes: ['francia'], color: '#59d7cb' },
+  { includes: ['generalisimo francisco de miranda', 'generalisimo'], color: '#e64fa4' },
 ]
 
 const normalizeText = (value: string) => (
@@ -78,6 +114,17 @@ const normalizeText = (value: string) => (
 )
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+const toSlotStep = (minutes: number) => Math.max(1, Math.round(minutes / SLOT_MINUTES))
+const snapSlot = (slot: number, snapMinutes: number) => {
+  const step = toSlotStep(snapMinutes)
+  return Math.round(slot / step) * step
+}
+const convertSlotUnit = (slot: number, sourceMinutes: number) => {
+  if (!Number.isFinite(slot)) return 0
+  if (!Number.isFinite(sourceMinutes) || sourceMinutes <= 0) return Math.round(slot)
+  if (sourceMinutes === SLOT_MINUTES) return Math.round(slot)
+  return Math.round((slot * sourceMinutes) / SLOT_MINUTES)
+}
 
 const makeId = () => `blk_${Date.now()}_${Math.floor(Math.random() * 99999)}`
 const makeArrivalId = (dayIndex: number) => `arr_${dayIndex}`
@@ -102,6 +149,13 @@ const colorFromId = (value: string) => {
   }
   const index = Math.abs(hash) % COLOR_PALETTE.length
   return COLOR_PALETTE[index]
+}
+
+const colorFromColegioNombre = (nombre: string, fallbackSeed: string) => {
+  const normalized = normalizeText(nombre)
+  const rule = COLEGIO_COLOR_RULES.find((item) => item.includes.some((entry) => normalized.includes(entry)))
+  if (rule) return rule.color
+  return colorFromId(fallbackSeed || nombre || 'sin-colegio')
 }
 
 const minutesToLabel = (totalMinutes: number) => {
@@ -140,13 +194,23 @@ const getDocenteNombre = (docente: PersonalDocente | null) => {
   return `${docente.apellidos || ''} ${docente.nombres || ''}`.replace(/\s+/g, ' ').trim() || 'Docente'
 }
 
-const parseHorarioLaboral = (raw?: string | null) => {
+type ParsedHorarioLaboral = {
+  blocks: ScheduleBlock[]
+  notes: string
+  arrivalMarkers: ArrivalMarker[]
+}
+
+const parseHorarioLaboral = (raw?: string | null): ParsedHorarioLaboral => {
   if (!raw || !raw.trim()) {
     return { blocks: [] as ScheduleBlock[], notes: '', arrivalMarkers: buildDefaultArrivalMarkers() }
   }
 
   try {
     const parsed = JSON.parse(raw)
+    const parsedSlotMinutesRaw = Number(parsed?.slots?.minutes)
+    const parsedSlotMinutes = Number.isFinite(parsedSlotMinutesRaw) && parsedSlotMinutesRaw > 0
+      ? parsedSlotMinutesRaw
+      : LEGACY_SLOT_MINUTES
     const blocksRaw = Array.isArray(parsed?.blocks) ? parsed.blocks : []
 
     const blocks = blocksRaw
@@ -155,10 +219,13 @@ const parseHorarioLaboral = (raw?: string | null) => {
         const row = item as Partial<ScheduleBlock>
 
         const dayIndex = Number(row.dayIndex)
-        const startSlot = Number(row.startSlot)
-        const durationSlots = Number(row.durationSlots)
+        const startSlotRaw = Number(row.startSlot)
+        const durationSlotsRaw = Number(row.durationSlots)
 
-        if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlot) || !Number.isFinite(durationSlots)) return null
+        if (!Number.isFinite(dayIndex) || !Number.isFinite(startSlotRaw) || !Number.isFinite(durationSlotsRaw)) return null
+
+        const startSlot = convertSlotUnit(startSlotRaw, parsedSlotMinutes)
+        const durationSlots = Math.max(1, convertSlotUnit(durationSlotsRaw, parsedSlotMinutes))
 
         return {
           id: String(row.id || makeId()),
@@ -182,7 +249,8 @@ const parseHorarioLaboral = (raw?: string | null) => {
         ? (parsed.arrivalMarkers as Array<Partial<ArrivalMarker>>)
           .map((item) => {
             const dayIndex = clamp(Math.round(Number(item.dayIndex || 0)), 0, DAYS.length - 1)
-            const startSlot = clamp(Math.round(Number(item.startSlot || 0)), 0, SLOT_COUNT - 1)
+            const startSlotRaw = Number(item.startSlot || 0)
+            const startSlot = clamp(convertSlotUnit(startSlotRaw, parsedSlotMinutes), 0, SLOT_COUNT - 1)
             return {
               id: String(item.id || makeArrivalId(dayIndex)),
               dayIndex,
@@ -215,6 +283,7 @@ export default function OperacionesHorarioDocentePage() {
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null)
   const [selectedArrivalId, setSelectedArrivalId] = useState<string | null>(null)
   const [selectedTemplateColegioId, setSelectedTemplateColegioId] = useState<string | null>(null)
+  const [snapMinutes, setSnapMinutes] = useState<5 | 15>(5)
   const [interaction, setInteraction] = useState<InteractionState | null>(null)
   const [baselineSnapshot, setBaselineSnapshot] = useState('')
 
@@ -226,7 +295,7 @@ export default function OperacionesHorarioDocentePage() {
   const colegioColorById = useMemo(() => {
     const map = new Map<string, string>()
     colegios.forEach((colegio) => {
-      map.set(colegio.id, colorFromId(colegio.id))
+      map.set(colegio.id, colorFromColegioNombre(colegio.nombre, colegio.id))
     })
     map.set('sin-colegio', '#cbd5e1')
     return map
@@ -416,7 +485,8 @@ export default function OperacionesHorarioDocentePage() {
       const deltaSlots = Math.round((event.clientY - interaction.startY) / SLOT_HEIGHT)
 
       if (interaction.targetType === 'arrival') {
-        const nextStart = clamp(interaction.originalStartSlot + deltaSlots, 0, SLOT_COUNT - 2)
+        const nextStartRaw = interaction.originalStartSlot + deltaSlots
+        const nextStart = clamp(snapSlot(nextStartRaw, snapMinutes), 0, SLOT_COUNT - 2)
         const fixedDayIndex = interaction.originalDayIndex
         setArrivalMarkers((prev) => prev.map((marker) => {
           if (marker.id !== interaction.itemId) return marker
@@ -451,7 +521,8 @@ export default function OperacionesHorarioDocentePage() {
 
         if (interaction.mode === 'move') {
           const nextDuration = clamp(interaction.originalDurationSlots, 1, availableSlots)
-          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, arrivalSlot, DEPARTURE_SLOT - nextDuration)
+          const nextStartRaw = interaction.originalStartSlot + deltaSlots
+          const nextStart = clamp(snapSlot(nextStartRaw, snapMinutes), arrivalSlot, DEPARTURE_SLOT - nextDuration)
           return {
             ...block,
             dayIndex: pointerDay,
@@ -463,7 +534,8 @@ export default function OperacionesHorarioDocentePage() {
         if (interaction.mode === 'resize-start') {
           const originalEnd = Math.min(interaction.originalStartSlot + interaction.originalDurationSlots, DEPARTURE_SLOT)
           const maxStart = interaction.originalStartSlot + interaction.originalDurationSlots - 1
-          const nextStart = clamp(interaction.originalStartSlot + deltaSlots, arrivalSlot, maxStart)
+          const nextStartRaw = interaction.originalStartSlot + deltaSlots
+          const nextStart = clamp(snapSlot(nextStartRaw, snapMinutes), arrivalSlot, maxStart)
           const nextDuration = clamp(originalEnd - nextStart, 1, DEPARTURE_SLOT - nextStart)
           return {
             ...block,
@@ -473,7 +545,8 @@ export default function OperacionesHorarioDocentePage() {
         }
 
         const maxDuration = Math.max(1, DEPARTURE_SLOT - interaction.originalStartSlot)
-        const nextDuration = clamp(interaction.originalDurationSlots + deltaSlots, 1, maxDuration)
+        const nextDurationRaw = interaction.originalDurationSlots + deltaSlots
+        const nextDuration = clamp(snapSlot(nextDurationRaw, snapMinutes), 1, maxDuration)
         return {
           ...block,
           durationSlots: nextDuration,
@@ -492,14 +565,15 @@ export default function OperacionesHorarioDocentePage() {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [arrivalMarkers, interaction])
+  }, [arrivalMarkers, interaction, snapMinutes])
 
   const addBlock = () => {
     const fallbackColegioId = colegios[0]?.id || 'sin-colegio'
     const dayIndex = 0
     const arrivalSlot = getArrivalSlotForDay(arrivalMarkers, dayIndex)
     const availableSlots = Math.max(1, DEPARTURE_SLOT - arrivalSlot)
-    const durationSlots = clamp(4, 1, availableSlots)
+    const defaultDuration = toSlotStep(60)
+    const durationSlots = clamp(defaultDuration, 1, availableSlots)
     const nextBlock: ScheduleBlock = {
       id: makeId(),
       dayIndex,
@@ -543,7 +617,7 @@ export default function OperacionesHorarioDocentePage() {
       slots: {
         start: '06:45',
         end: '15:30',
-        minutes: 15,
+        minutes: SLOT_MINUTES,
       },
       arrivalMarkers,
       blocks,
@@ -599,8 +673,10 @@ export default function OperacionesHorarioDocentePage() {
     const dayIndex = clamp(Math.floor((clientX - rect.left) / dayWidth), 0, DAYS.length - 1)
     const arrivalSlot = getArrivalSlotForDay(arrivalMarkers, dayIndex)
     const maxDuration = Math.max(1, DEPARTURE_SLOT - arrivalSlot)
-    const durationSlots = clamp(4, 1, maxDuration)
-    const slot = clamp(Math.floor((clientY - rect.top) / SLOT_HEIGHT), arrivalSlot, DEPARTURE_SLOT - durationSlots)
+    const defaultDuration = toSlotStep(60)
+    const durationSlots = clamp(defaultDuration, 1, maxDuration)
+    const slotRaw = Math.floor((clientY - rect.top) / SLOT_HEIGHT)
+    const slot = clamp(snapSlot(slotRaw, snapMinutes), arrivalSlot, DEPARTURE_SLOT - durationSlots)
 
     const nextBlock: ScheduleBlock = {
       id: makeId(),
@@ -693,7 +769,7 @@ export default function OperacionesHorarioDocentePage() {
             <div className="text-left">
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-gray-400">Horario laboral interactivo</p>
               <h1 className="mt-3 text-3xl font-bold tracking-tight text-black md:text-5xl">{docenteNombre}</h1>
-              <p className="mt-2 text-base text-gray-600">Bloques de 15 minutos desde las 6:45 am hasta las 3:30 pm.</p>
+              <p className="mt-2 text-base text-gray-600">Bloques de 5 minutos desde las 6:45 am hasta las 3:30 pm.</p>
             </div>
           </div>
 
@@ -741,6 +817,22 @@ export default function OperacionesHorarioDocentePage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex items-center gap-1 rounded-xl border border-gray-300 bg-white p-1 text-[10px] font-bold uppercase tracking-[0.12em] text-gray-700">
+                      <button
+                        type="button"
+                        onClick={() => setSnapMinutes(15)}
+                        className={`rounded-lg px-2 py-1 transition-all ${snapMinutes === 15 ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
+                      >
+                        Snap 15m
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSnapMinutes(5)}
+                        className={`rounded-lg px-2 py-1 transition-all ${snapMinutes === 5 ? 'bg-black text-white' : 'text-gray-600 hover:text-black'}`}
+                      >
+                        Snap 5m
+                      </button>
+                    </div>
                     <button
                       onClick={addBlock}
                       className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold uppercase tracking-[0.12em] text-gray-700 transition-all hover:border-black hover:text-black"
@@ -774,15 +866,19 @@ export default function OperacionesHorarioDocentePage() {
 
                     <div className="grid grid-cols-[120px_repeat(5,minmax(0,1fr))]">
                       <div className="relative border-r border-gray-200 bg-gray-50" style={{ height: rowHeightPx }}>
-                        {Array.from({ length: SLOT_COUNT }).map((_, slot) => (
-                          <div
-                            key={`time-${slot}`}
-                            className="absolute left-0 right-0 border-b border-gray-100 px-2 text-[10px] font-semibold text-gray-500"
-                            style={{ top: slot * SLOT_HEIGHT, height: SLOT_HEIGHT }}
-                          >
-                            {slotLabel(slot)}
-                          </div>
-                        ))}
+                        {Array.from({ length: SLOT_COUNT }).map((_, slot) => {
+                          const minutesFromStart = slot * SLOT_MINUTES
+                          const isMajor = minutesFromStart % MAJOR_LINE_MINUTES === 0
+                          return (
+                            <div
+                              key={`time-${slot}`}
+                              className={`absolute left-0 right-0 border-b px-2 text-[10px] font-semibold ${isMajor ? 'border-gray-200 text-gray-600' : 'border-gray-100 text-transparent'}`}
+                              style={{ top: slot * SLOT_HEIGHT, height: SLOT_HEIGHT }}
+                            >
+                              {isMajor ? slotLabel(slot) : ''}
+                            </div>
+                          )
+                        })}
                       </div>
 
                       <div
@@ -800,13 +896,17 @@ export default function OperacionesHorarioDocentePage() {
                           />
                         ))}
 
-                        {Array.from({ length: SLOT_COUNT }).map((_, slot) => (
-                          <div
-                            key={`line-${slot}`}
-                            className="absolute left-0 right-0 border-b border-gray-100"
-                            style={{ top: slot * SLOT_HEIGHT, height: SLOT_HEIGHT }}
-                          />
-                        ))}
+                        {Array.from({ length: SLOT_COUNT }).map((_, slot) => {
+                          const minutesFromStart = slot * SLOT_MINUTES
+                          const isMajor = minutesFromStart % MAJOR_LINE_MINUTES === 0
+                          return (
+                            <div
+                              key={`line-${slot}`}
+                              className={`absolute left-0 right-0 border-b ${isMajor ? 'border-gray-200' : 'border-gray-100/60'}`}
+                              style={{ top: slot * SLOT_HEIGHT, height: SLOT_HEIGHT }}
+                            />
+                          )
+                        })}
 
                         {arrivalMarkers.map((marker) => (
                           <div
@@ -846,7 +946,8 @@ export default function OperacionesHorarioDocentePage() {
                         {blocks.map((block) => {
                           const blockColor = colegioColorById.get(block.colegioId) || '#e5e7eb'
                           const isSelected = block.id === selectedBlockId
-                          const isCompactBlock = block.durationSlots <= 1
+                          const blockHeight = Math.max((block.durationSlots * SLOT_HEIGHT) - 4, 8)
+                          const isCompactBlock = blockHeight < 32
                           const compactLabel = (block.title || '').trim() || blockTimeLabel(block)
 
                           return (
@@ -860,7 +961,7 @@ export default function OperacionesHorarioDocentePage() {
                                 left: `calc(${(block.dayIndex * 100) / DAYS.length}% + 4px)`,
                                 width: `calc(${100 / DAYS.length}% - 8px)`,
                                 top: (block.startSlot * SLOT_HEIGHT) + 2,
-                                height: Math.max((block.durationSlots * SLOT_HEIGHT) - 4, 20),
+                                height: blockHeight,
                                 backgroundColor: blockColor,
                               }}
                             >
@@ -870,7 +971,7 @@ export default function OperacionesHorarioDocentePage() {
                               />
 
                               {isCompactBlock ? (
-                                <p className="w-full truncate px-1 text-[10px] font-extrabold leading-none text-black">
+                                <p className="w-full truncate px-1 text-[9px] font-extrabold leading-none text-black">
                                   {compactLabel}
                                 </p>
                               ) : (

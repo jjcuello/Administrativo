@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Image from 'next/image'
 import { ArrowRight, Loader2, Lock, Mail } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -144,6 +145,15 @@ export default function Home() {
 
       <div className="relative z-10 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center px-6 py-12 md:px-12">
         <section className="text-center lg:text-left">
+          <div className="mb-6 flex justify-center lg:justify-start">
+            <Link
+              href="/propuesta"
+              className="inline-flex items-center rounded-full border border-black/15 bg-white/80 px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-gray-600 transition hover:border-black hover:text-black"
+            >
+              Ver propuesta web institucional
+            </Link>
+          </div>
+
           <div className="mb-6 flex justify-center lg:justify-start">
             <Image
               src="/logo_ana.jpg"
