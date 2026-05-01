@@ -28,6 +28,31 @@ Ejemplo:
 
 ACADEMIA_APP_PORT=3001 ./arrancar-server
 
+Verificación rápida del servidor
+
+- Desde la raíz del repositorio, ejecutar:
+
+  ./verificar-server
+
+Qué hace
+
+- Se conecta por SSH a 192.168.88.132 por el puerto 2468.
+- Muestra fecha, host y uso actual de `/`.
+- Verifica el estado de `pm2-jcuello.service`.
+- Verifica el proceso PM2 `academia-ana-dev`.
+- Ejecuta un `curl -I` local contra `127.0.0.1:3000`.
+- Resume tamaños de `.next`, `node_modules`, logs de PM2 y journal.
+
+Variables opcionales
+
+- ACADEMIA_REMOTE_HOST
+- ACADEMIA_REMOTE_PORT
+- ACADEMIA_REMOTE_USER
+- ACADEMIA_REMOTE_APP_DIR
+- ACADEMIA_PM2_APP_NAME
+- ACADEMIA_APP_PORT
+- ACADEMIA_PM2_SYSTEMD_UNIT
+
 Mantenimiento rápido de disco
 
 - Desde la raíz del repositorio, ejecutar:

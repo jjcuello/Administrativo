@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REMOTE_HOST="${ACADEMIA_REMOTE_HOST:-192.168.88.132}"
+REMOTE_PORT="${ACADEMIA_REMOTE_PORT:-2468}"
+REMOTE_USER="${ACADEMIA_REMOTE_USER:-jcuello}"
+REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-/home/${REMOTE_USER}/APP-FANA}"
+PM2_APP_NAME="${ACADEMIA_PM2_APP_NAME:-academia-ana-dev}"
+APP_PORT="${ACADEMIA_APP_PORT:-3000}"
+PM2_SYSTEMD_UNIT="${ACADEMIA_PM2_SYSTEMD_UNIT:-pm2-jcuello}"
+
+SSH_TARGET="${REMOTE_USER}@${REMOTE_HOST}"
+
+read -r -d '' REMOTE_COMMAND <<'EOF' || true
+set -euo pipefail
+
+APP_DIR=${REMOTE_APP_DIR}
+PM2_NAME=${PM2_APP_NAME}
+PORT_VALUE=${APP_PORT}
+PM2_UNIT=${PM2_SYSTEMD_UNIT}
+
+case "${APP_DIR}" in
+  ~/*) APP_DIR="${HOME}/${APP_DIR#~/}" ;;
+esac
+
+echo "=== HOST ==="
+hostname
+date
+echo
+
+echo "=== ROOT FS ==="
+df -h /
+echo
+
+echo "=== PM2 SYSTEMD ==="
+systemctl show "${PM2_UNIT}" -p ActiveState -p SubState -p Result -p NRestarts || true
+echo
+
+echo "=== PM2 APP ==="
+pm2 show "${PM2_NAME}" || true
+echo
+
+echo "=== HTTP CHECK ==="
+curl -I --max-time 15 "http://127.0.0.1:${PORT_VALUE}" || true
+echo
+
+echo "=== APP ARTIFACTS ==="
+du -sh "${APP_DIR}/.next" 2>/dev/null || true
+du -sh "${APP_DIR}/node_modules" 2>/dev/null || true
+du -sh ~/.pm2/logs 2>/dev/null || true
+echo
+
+echo "=== JOURNAL USAGE ==="
+journalctl --disk-usage || true
+EOF
+
+echo "Conectando a ${SSH_TARGET}:${REMOTE_PORT} para verificar estado del servidor..."
+ssh -p "${REMOTE_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_TARGET}" \
+  "REMOTE_APP_DIR=$(printf '%q' "${REMOTE_APP_DIR}") PM2_APP_NAME=$(printf '%q' "${PM2_APP_NAME}") APP_PORT=$(printf '%q' "${APP_PORT}") PM2_SYSTEMD_UNIT=$(printf '%q' "${PM2_SYSTEMD_UNIT}") bash -lc $(printf '%q' "${REMOTE_COMMAND}")"
