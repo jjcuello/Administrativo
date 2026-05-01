@@ -9,9 +9,10 @@ Arranque remoto de la app
 Qué hace
 
 - Se conecta por SSH a 192.168.88.132 por el puerto 2468.
-- Entra en ~/academia-ana del servidor.
+- Entra en /home/jcuello/APP-FANA del servidor.
 - Reinicia el proceso PM2 academia-ana-dev.
-- Levanta la app con npm run dev en el puerto 3000.
+- Compila la app con npm run build.
+- Levanta la app con npm start en el puerto 3000.
 - Guarda la configuración de PM2 y muestra el estado final.
 
 Variables opcionales

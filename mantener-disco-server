@@ -5,7 +5,7 @@ set -euo pipefail
 REMOTE_HOST="${ACADEMIA_REMOTE_HOST:-192.168.88.132}"
 REMOTE_PORT="${ACADEMIA_REMOTE_PORT:-2468}"
 REMOTE_USER="${ACADEMIA_REMOTE_USER:-jcuello}"
-REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-/home/${REMOTE_USER}/academia-ana}"
+REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-/home/${REMOTE_USER}/APP-FANA}"
 PM2_APP_NAME="${ACADEMIA_PM2_APP_NAME:-academia-ana-dev}"
 APP_PORT="${ACADEMIA_APP_PORT:-3000}"
 RESET_NEXT="${ACADEMIA_RESET_NEXT:-0}"
@@ -41,11 +41,13 @@ pm2 flush "${PM2_NAME}" >/dev/null 2>&1 || true
 
 if [[ "${RESET_NEXT_VALUE}" == "1" ]]; then
   echo
-  echo "=== RESET .next AND RESTART PM2 ==="
+  echo "=== RESET .next, REBUILD AND RESTART PM2 ==="
   pm2 stop "${PM2_NAME}" || true
   rm -rf "${APP_DIR}"/.next
   cd "${APP_DIR}"
-  PORT="${PORT_VALUE}" pm2 start npm --name "${PM2_NAME}" -- run dev || pm2 restart "${PM2_NAME}"
+  npm run build
+  pm2 delete "${PM2_NAME}" || true
+  PORT="${PORT_VALUE}" pm2 start npm --name "${PM2_NAME}" -- start
   pm2 save >/dev/null 2>&1 || true
 fi
 

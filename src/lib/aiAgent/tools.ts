@@ -66,8 +66,12 @@ const safeNumber = (value?: number | null) => {
   return Number.isFinite(parsed) ? Math.abs(parsed) : 0
 }
 
-const isMissingColumnError = (message: string, columnName: string) => {
-  const msg = message.toLowerCase()
+const isMissingColumnError = (error: unknown, columnName: string) => {
+  const msg = typeof error === 'string'
+    ? error.toLowerCase()
+    : error instanceof Error
+      ? error.message.toLowerCase()
+      : String((error as { message?: string } | null | undefined)?.message || error || '').toLowerCase()
   const col = columnName.toLowerCase()
   return msg.includes(col) && (msg.includes('column') || msg.includes('schema cache') || msg.includes('does not exist') || msg.includes('no existe'))
 }

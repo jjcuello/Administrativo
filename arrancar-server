@@ -5,7 +5,7 @@ set -euo pipefail
 REMOTE_HOST="${ACADEMIA_REMOTE_HOST:-192.168.88.132}"
 REMOTE_PORT="${ACADEMIA_REMOTE_PORT:-2468}"
 REMOTE_USER="${ACADEMIA_REMOTE_USER:-jcuello}"
-REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-~/academia-ana}"
+REMOTE_APP_DIR="${ACADEMIA_REMOTE_APP_DIR:-/home/jcuello/APP-FANA}"
 PM2_APP_NAME="${ACADEMIA_PM2_APP_NAME:-academia-ana-dev}"
 APP_PORT="${ACADEMIA_APP_PORT:-3000}"
 
@@ -15,7 +15,8 @@ read -r -d '' REMOTE_COMMAND <<EOF || true
 set -euo pipefail
 cd ${REMOTE_APP_DIR}
 pm2 delete ${PM2_APP_NAME} || true
-PORT=${APP_PORT} pm2 start npm --name ${PM2_APP_NAME} -- run dev
+npm run build
+PORT=${APP_PORT} pm2 start npm --name ${PM2_APP_NAME} -- start
 pm2 save
 pm2 status ${PM2_APP_NAME} --no-color
 EOF

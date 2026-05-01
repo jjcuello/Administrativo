@@ -195,7 +195,7 @@ export default function ReportesHome() {
             </p>
           )}
 
-          {error && (
+          {!!error && (
             <p className="mx-auto mt-3 max-w-xl rounded-2xl bg-red-50 px-4 py-3 text-[11px] font-black text-red-700">
               ❌ No se pudo cargar el período escolar activo.
             </p>

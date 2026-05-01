@@ -217,7 +217,7 @@ export default function GestionPersonal() {
     personalId: string,
     objetivo: EstadoPersonal,
     extraPayload: Record<string, unknown> = {}
-  ) => {
+  ): Promise<{ error: unknown; estadoAplicado: string }> => {
     const candidates = getEstadoCandidates(objetivo)
     let lastError: unknown = null
 
@@ -247,7 +247,7 @@ export default function GestionPersonal() {
   const insertarPersonalConEstado = async (
     payload: Record<string, unknown>,
     objetivo: EstadoPersonal
-  ) => {
+  ): Promise<{ error: unknown; id?: string; estadoAplicado: string }> => {
     const candidates = getEstadoCandidates(objetivo)
     let lastError: unknown = null
 
@@ -976,7 +976,7 @@ export default function GestionPersonal() {
     if (!seleccionado?.id) return
     const { error, estadoAplicado } = await actualizarEstadoPersonal(seleccionado.id, st)
     if (error) {
-      setMensaje('❌ ' + error.message)
+      setMensaje('❌ ' + getErrorText(error))
       return
     }
     setMensaje(`✅ Estado cambiado a ${(estadoAplicado || st).toUpperCase()}`)
@@ -1034,7 +1034,7 @@ export default function GestionPersonal() {
     }
 
     if (error) {
-      setMensaje('❌ ' + error.message)
+      setMensaje('❌ ' + getErrorText(error))
       setCargando(false)
       return
     }
@@ -1087,7 +1087,7 @@ export default function GestionPersonal() {
     }
 
     if (error) {
-      setMensaje('❌ ' + error.message)
+      setMensaje('❌ ' + getErrorText(error))
       setCargando(false)
       return
     }
