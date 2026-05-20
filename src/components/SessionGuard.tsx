@@ -34,7 +34,7 @@ const ROLE_HOME_ROUTE: Record<RoleCode, string> = {
   consulta: '/reportes',
   gestion_personal: '/gestion',
   operador: '/gestion',
-  horario: '/gestion',
+  horario: '/operaciones/horarios',
 }
 
 const ROLE_ACCESS_RULES: Record<RoleCode, AccessRule[]> = {
@@ -65,7 +65,7 @@ const ROLE_ACCESS_RULES: Record<RoleCode, AccessRule[]> = {
   ],
   horario: [
     { type: 'exact', path: '/gestion' },
-    { type: 'prefix', path: '/gestion/clientes/tardes' },
+    { type: 'prefix', path: '/operaciones/horarios' },
   ],
 }
 
@@ -116,7 +116,7 @@ export default function SessionGuard({ children }: { children: React.ReactNode }
         }
 
         if (!data.session) {
-          router.replace('/')
+          router.replace('/login')
           return
         }
 
@@ -156,7 +156,7 @@ export default function SessionGuard({ children }: { children: React.ReactNode }
 
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
-        router.replace('/')
+        router.replace('/login')
       }
     })
 

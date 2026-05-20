@@ -256,10 +256,6 @@ export default function OperacionesEgresos() {
     })
   }, [egresosData, debounced])
 
-  useEffect(() => {
-    setPaginaEgresos(1)
-  }, [debounced, periodoSeleccionadoId])
-
   const errorCarga = egresosError
     ? getErrorText(egresosError)
     : periodoError
@@ -283,6 +279,7 @@ export default function OperacionesEgresos() {
   const periodoConsultaEtiqueta = getPeriodoEtiqueta(periodoSeleccionado)
 
   const manejarCambioPeriodo = (nextPeriodoId: string) => {
+    setPaginaEgresos(1)
     const nextParams = new URLSearchParams(searchParamsString)
 
     if (nextPeriodoId) {
@@ -367,10 +364,8 @@ export default function OperacionesEgresos() {
     return items
   }, [categorias])
 
-  const mostrarProveedor = useMemo(
-    () => !categoriaEsNominaUi(formData.categoria_id) && (categoriaEsServiciosUi(formData.categoria_id) || categoriaUsaProveedor(categoriaActual)),
-    [categoriaActual]
-  )
+  const mostrarProveedor = !categoriaEsNominaUi(formData.categoria_id)
+    && (categoriaEsServiciosUi(formData.categoria_id) || categoriaUsaProveedor(categoriaActual))
 
   const mostrarProfesor = useMemo(
     () => categoriaEsNominaUi(formData.categoria_id) || categoriaUsaProfesor(categoriaActual),
@@ -836,7 +831,10 @@ export default function OperacionesEgresos() {
               <Search size={14} className="absolute left-3 top-3.5 text-gray-400" />
               <input
                 value={busqueda}
-                onChange={e => setBusqueda(e.target.value)}
+                onChange={e => {
+                  setPaginaEgresos(1)
+                  setBusqueda(e.target.value)
+                }}
                 placeholder="Buscar por descripción, proveedor o empleado"
                 className="w-full pl-9 pr-3 py-3 rounded-2xl border border-gray-200 bg-white text-xs shadow-sm outline-none focus:border-black"
               />

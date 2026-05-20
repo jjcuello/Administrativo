@@ -11,7 +11,6 @@ import {
   Globe2,
   GraduationCap,
   HeartHandshake,
-  ImageIcon,
   Medal,
   Quote,
   Smartphone,
@@ -19,6 +18,8 @@ import {
   Trophy,
   Users,
 } from 'lucide-react'
+
+type PieceKind = 'knight' | 'rook' | 'queen' | 'king'
 
 type Copy = {
   nav: {
@@ -286,12 +287,60 @@ export default function PropuestaPage() {
   useEffect(() => {
     if (typeof navigator === 'undefined') return
     const locale = navigator.language.toLowerCase()
-    if (locale.startsWith('en')) {
-      setLang('en')
-    }
+    if (!locale.startsWith('en')) return
+
+    const frame = window.requestAnimationFrame(() => setLang('en'))
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   const c = useMemo(() => (lang === 'en' ? copyEn : copyEs), [lang])
+
+  const ChessPieceIcon = ({ piece, className = '' }: { piece: PieceKind; className?: string }) => {
+    if (piece === 'knight') {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path d="M7 19h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M8.5 19c.3-2.7 1.4-4.4 3.4-5.4 1.2-.6 2-1.6 2-2.9 0-.8-.3-1.6-.9-2.3l2.3-2.1c.5-.5.5-1.3 0-1.8-.4-.4-1.1-.5-1.6-.2l-2.1 1.3c-.7-.6-1.5-.9-2.3-.9-1.1 0-2.1.5-2.8 1.4 1.3.5 2.1 1.4 2.4 2.8-.8.2-1.5.7-2.1 1.4-.8 1-.9 2.1-.3 3.3.5 1 1.3 1.8 2.4 2.5-.3.9-.4 1.9-.4 2.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="11.6" cy="8.2" r="0.9" fill="currentColor" />
+        </svg>
+      )
+    }
+
+    if (piece === 'rook') {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <path d="M6.5 19h11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M8 19V9.5h8V19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M7.5 9.5V6h2.2v2.2H12V6h2.2v2.2h2.3V6h2v3.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M7 12.5h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      )
+    }
+
+    if (piece === 'queen') {
+      return (
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+          <circle cx="6.5" cy="6.8" r="1.3" fill="currentColor" />
+          <circle cx="12" cy="5.2" r="1.3" fill="currentColor" />
+          <circle cx="17.5" cy="6.8" r="1.3" fill="currentColor" />
+          <path d="M7.4 17.8h9.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M8 17.8 6.7 9l5.3 3.1L17.3 9 16 17.8" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M8.5 14.2h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M9.4 20h5.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      )
+    }
+
+    return (
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={className}>
+        <path d="M8.5 19h7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M9 19v-4.2c0-1.7 1.3-3 3-3s3 1.3 3 3V19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M9.3 12.3h5.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 4.5v4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M10 6.6h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    )
+  }
 
   const renderTrust = (item: string) => {
     const match = item.match(/^([+\d.,]+)\s+(.*)$/)
@@ -308,24 +357,98 @@ export default function PropuestaPage() {
     )
   }
 
+  const heroEditorialStats =
+    lang === 'en'
+      ? [
+          { value: '12+', label: 'active cohorts' },
+          { value: '3', label: 'service formats' },
+          { value: '24h', label: 'response promise' },
+        ]
+      : [
+          { value: '12+', label: 'cohortes activas' },
+          { value: '3', label: 'modalidades de servicio' },
+          { value: '24h', label: 'promesa de respuesta' },
+        ]
+
   const impactItems = [
     {
-      title: 'Ajedrez Transversal en Colegios',
-      photo: lang === 'en' ? 'Photo placeholder: students in a school classroom' : 'Foto de alumnos en un colegio',
+      title: lang === 'en' ? 'Transversal Chess for Schools' : 'Ajedrez Transversal en Colegios',
+      photo: lang === 'en' ? 'Ideal photo: students inside a partner school classroom' : 'Foto ideal: alumnos en una jornada dentro del colegio aliado',
+      eyebrow: lang === 'en' ? 'School implementation' : 'Implementacion escolar',
+      body:
+        lang === 'en'
+          ? 'A visual block for partner schools, classroom culture, and learning impact.'
+          : 'Un bloque visual para mostrar colegios aliados, vida en aula e impacto pedagogico.',
+      accent: 'from-[#f7d56a] via-[#fff1bf] to-white',
     },
     {
-      title: 'Nexus Ajedrez para alcance global',
-      photo: lang === 'en' ? 'Photo placeholder: online live class' : 'Foto de clase online en vivo',
+      title: lang === 'en' ? 'Nexus Chess with Global Reach' : 'Nexus Ajedrez para alcance global',
+      photo: lang === 'en' ? 'Ideal photo: live online class with teacher and students on screen' : 'Foto ideal: clase online en vivo con docente y alumnos en pantalla',
+      eyebrow: lang === 'en' ? 'Digital learning' : 'Aprendizaje digital',
+      body:
+        lang === 'en'
+          ? 'Use a real session capture to support the promise of international access.'
+          : 'Usar una captura real de sesion para respaldar la promesa de alcance internacional.',
+      accent: 'from-[#9ec5ff] via-[#dcebff] to-white',
     },
     {
-      title: 'Semillero con ruta federada',
-      photo: lang === 'en' ? 'Photo placeholder: youth tournament' : 'Foto de torneo juvenil',
+      title: lang === 'en' ? 'Talent Seed with Federation Pathway' : 'Semillero con ruta federada',
+      photo: lang === 'en' ? 'Ideal photo: youth tournament with clocks, boards, and emotion' : 'Foto ideal: torneo juvenil con relojes, tableros y emocion competitiva',
+      eyebrow: lang === 'en' ? 'Competitive development' : 'Desarrollo competitivo',
+      body:
+        lang === 'en'
+          ? 'This card should feel aspirational, with intensity, focus, and tournament atmosphere.'
+          : 'Esta tarjeta debe sentirse aspiracional, con intensidad, foco y atmosfera de torneo.',
+      accent: 'from-[#ffb784] via-[#ffe0c7] to-white',
     },
     {
-      title: 'Formacion docente y comunitaria',
-      photo: lang === 'en' ? 'Photo placeholder: teacher workshop' : 'Foto de taller para docentes',
+      title: lang === 'en' ? 'Teacher and Community Training' : 'Formacion docente y comunitaria',
+      photo: lang === 'en' ? 'Ideal photo: teacher workshop, mentor circle, or training session' : 'Foto ideal: taller docente, circulo de mentoria o jornada de capacitacion',
+      eyebrow: lang === 'en' ? 'Community training' : 'Formacion comunitaria',
+      body:
+        lang === 'en'
+          ? 'Show facilitation, printed materials, and collaborative learning, not placeholders.'
+          : 'Mostrar facilitacion, materiales impresos y aprendizaje colaborativo, no placeholders.',
+      accent: 'from-[#b7f5c5] via-[#e4ffeb] to-white',
     },
   ]
+
+  const teacherProfiles =
+    lang === 'en'
+      ? [
+          {
+            name: 'Strategic methodology',
+            role: 'Beginner to competitive progression',
+            body: 'Present the lead teacher here with portrait, levels taught, and a clear teaching promise.',
+          },
+          {
+            name: 'Sports psychology support',
+            role: 'Confidence, discipline, and performance habits',
+            body: 'This card works best with a real face, short credentials, and a more human teaching angle.',
+          },
+          {
+            name: 'Tournament preparation',
+            role: 'Analysis, training plans, and measurable growth',
+            body: 'Highlight the coach who turns talent into results through structure and competitive follow-up.',
+          },
+        ]
+      : [
+          {
+            name: 'Metodologia estrategica',
+            role: 'Progresion desde iniciacion hasta competencia',
+            body: 'Aqui conviene presentar al docente principal con retrato, niveles que atiende y una promesa pedagogica clara.',
+          },
+          {
+            name: 'Acompanamiento psicodeportivo',
+            role: 'Confianza, disciplina y habitos de rendimiento',
+            body: 'Esta tarjeta funciona mejor con un rostro real, credenciales cortas y un enfoque docente mas humano.',
+          },
+          {
+            name: 'Preparacion para torneos',
+            role: 'Analisis, planes de entrenamiento y progreso medible',
+            body: 'Destaca al entrenador que convierte talento en resultados con estructura y seguimiento competitivo.',
+          },
+        ]
 
   const initials = (name: string) =>
     name
@@ -335,54 +458,125 @@ export default function PropuestaPage() {
       .slice(0, 2)
       .toUpperCase()
 
+  const navItems: Array<{ href: string; label: string; piece: PieceKind; accent: string; eyebrow: string }> = [
+    {
+      href: '#programas',
+      label: c.nav.programas,
+      piece: 'knight',
+      accent: '#F6BA47',
+      eyebrow: lang === 'en' ? 'Learning routes' : 'Rutas de aprendizaje',
+    },
+    {
+      href: '#torneos',
+      label: c.nav.torneos,
+      piece: 'rook',
+      accent: '#F6692F',
+      eyebrow: lang === 'en' ? 'Competitive scene' : 'Escena competitiva',
+    },
+    {
+      href: '#docentes',
+      label: c.nav.docentes,
+      piece: 'queen',
+      accent: '#7C8AF6',
+      eyebrow: lang === 'en' ? 'Academic guidance' : 'Guia academica',
+    },
+    {
+      href: '#contacto',
+      label: c.nav.contacto,
+      piece: 'king',
+      accent: '#BAFCC7',
+      eyebrow: lang === 'en' ? 'Immediate action' : 'Accion inmediata',
+    },
+  ]
+
   return (
     <div className="min-h-screen bg-[#121417] text-[#ECECEC] relative overflow-x-hidden">
       {/* GLOW fondo global superior izquierdo */}
       <div className="pointer-events-none absolute -top-32 -left-32 z-0 h-[420px] w-[420px] rounded-full bg-orange-500/10 blur-[120px]" />
       {/* GLOW fondo global superior derecho */}
       <div className="pointer-events-none absolute -top-40 right-0 z-0 h-[340px] w-[340px] rounded-full bg-blue-500/10 blur-[100px]" />
-      <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-10 relative z-10">
-        <header className="rounded-3xl border border-white/10 bg-[#191d24] px-6 py-5 shadow-[0_20px_70px_-40px_rgba(0,0,0,0.75)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.35em] text-[#F6BA47]">FANA</p>
-              <h1 className="text-lg font-extrabold leading-tight tracking-tight sm:text-xl">Fundacion Academia Nacional de Ajedrez</h1>
-            </div>
-            <nav className="flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#ECECEC]/80 sm:gap-6 lg:gap-8">
-              <a href="#programas" className="px-1 py-1 transition hover:text-[#F6BA47]">{c.nav.programas}</a>
-              <a href="#torneos" className="px-1 py-1 transition hover:text-[#F6BA47]">{c.nav.torneos}</a>
-              <a href="#docentes" className="px-1 py-1 transition hover:text-[#F6BA47]">{c.nav.docentes}</a>
-              <a href="#contacto" className="px-1 py-1 transition hover:text-[#F6BA47]">{c.nav.contacto}</a>
-            </nav>
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 p-1">
-              <button
-                type="button"
-                onClick={() => setLang('es')}
-                className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'es' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
-              >
-                ES
-              </button>
-              <button
-                type="button"
-                onClick={() => setLang('en')}
-                className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'en' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
-              >
-                EN
-              </button>
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-4 sm:px-8 sm:py-5 lg:px-10">
+        <header className="rounded-3xl border border-white/10 bg-[#191d24] px-4 py-3 shadow-[0_20px_70px_-40px_rgba(0,0,0,0.75)] sm:px-6 sm:py-3.5">
+          <div className="flex flex-col gap-3 xl:grid xl:grid-cols-[minmax(0,430px)_auto] xl:items-center xl:gap-6">
+            <div className="flex items-start justify-between gap-4 xl:min-w-0">
+              <div className="min-w-0 xl:max-w-[430px]">
+                <p className="text-[11px] uppercase tracking-[0.35em] text-[#F6BA47]">FANA</p>
+                <h1 className="max-w-[12ch] text-lg font-extrabold leading-tight tracking-tight sm:max-w-none sm:text-xl xl:max-w-none xl:whitespace-nowrap xl:text-[1rem] xl:leading-none xl:tracking-[-0.02em]">Fundacion Academia Nacional de Ajedrez</h1>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/30 p-1 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setLang('es')}
+                  className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'es' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
+                >
+                  ES
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'en' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
+                >
+                  EN
+                </button>
+              </div>
             </div>
 
-            <a
-              href="#contacto"
-              className="inline-flex items-center gap-2 rounded-full bg-[#F6692F] px-5 py-2.5 text-[11px] font-black uppercase tracking-[0.18em] text-black shadow-[0_10px_28px_-12px_rgba(246,105,47,0.9)] ring-1 ring-[#F6BA47]/45 transition hover:bg-[#f47d4d] hover:shadow-[0_16px_34px_-14px_rgba(246,105,47,0.95)]"
-            >
-              {c.hero.ctaPrimary} <ArrowRight size={14} />
-            </a>
+            <div className="flex flex-col gap-3 xl:items-end xl:justify-start xl:self-stretch">
+              <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-black/30 p-1 xl:flex">
+                <button
+                  type="button"
+                  onClick={() => setLang('es')}
+                  className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'es' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
+                >
+                  ES
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  className={`rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${lang === 'en' ? 'bg-[#F6692F] text-black' : 'text-[#ECECEC]/70'}`}
+                >
+                  EN
+                </button>
+              </div>
+
+              <a
+                href="#contacto"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#F6692F] px-5 py-3 text-center text-[10px] font-black uppercase leading-relaxed tracking-[0.16em] text-black shadow-[0_10px_28px_-12px_rgba(246,105,47,0.9)] ring-1 ring-[#F6BA47]/45 transition hover:bg-[#f47d4d] hover:shadow-[0_16px_34px_-14px_rgba(246,105,47,0.95)] sm:w-auto sm:self-end sm:text-[11px] sm:tracking-[0.18em]"
+              >
+                {c.hero.ctaPrimary} <ArrowRight size={14} />
+              </a>
+            </div>
           </div>
         </header>
 
+        <section className="mt-3 grid gap-3 lg:grid-cols-4 lg:items-stretch">
+          {navItems.map(item => (
+            <a
+              key={`${item.href}-quick`}
+              href={item.href}
+              className="group rounded-[1.45rem] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.02)_100%)] px-4 py-3 shadow-[0_18px_40px_-34px_rgba(0,0,0,0.85)] backdrop-blur transition duration-200 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(160deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.03)_100%)] hover:shadow-[0_20px_44px_-30px_rgba(0,0,0,0.9)]"
+            >
+              <div className="flex items-center gap-3">
+                <span
+                  className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/20 transition group-hover:scale-[1.03]"
+                  style={{ color: item.accent, boxShadow: `0 0 0 1px ${item.accent}22 inset` }}
+                >
+                  <ChessPieceIcon piece={item.piece} className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[9px] font-black uppercase tracking-[0.22em] text-white/45">{item.eyebrow}</p>
+                  <p className="mt-1 text-sm font-extrabold uppercase tracking-[0.16em] text-[#ECECEC]">{item.label}</p>
+                </div>
+                <ArrowRight size={14} className="shrink-0 text-white/35 transition duration-200 group-hover:translate-x-0.5 group-hover:text-white/70" />
+              </div>
+            </a>
+          ))}
+        </section>
+
         <main className="mt-8 space-y-8">
           {/* HERO con glows personalizados */}
-          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#1a1f27] px-6 py-20 sm:px-10 sm:py-24">
+          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#1a1f27] px-5 py-14 sm:px-10 sm:py-24">
             {/* Glow naranja arriba izquierda HERO */}
             <div className="pointer-events-none absolute -top-32 -left-32 z-0 h-[340px] w-[340px] rounded-full bg-orange-500/20 blur-[120px]" />
             {/* Glow azul arriba derecha HERO */}
@@ -393,34 +587,42 @@ export default function PropuestaPage() {
             <div className="absolute -bottom-28 left-0 h-72 w-72 rounded-full bg-[#BAFCC7]/20" />
             <div className="absolute inset-0 bg-[linear-gradient(130deg,rgba(246,105,47,0.10)_0%,rgba(246,186,71,0.08)_42%,rgba(124,138,246,0.12)_100%)]" />
 
-            <div className="relative z-10 grid items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+            <div className="relative z-10 grid items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-10">
               <div>
-                <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/25 px-4 py-2 text-[10px] font-black uppercase tracking-[0.3em] text-[#ECECEC]">
+                <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/25 px-3 py-2 text-[9px] font-black uppercase tracking-[0.24em] text-[#ECECEC] sm:px-4 sm:text-[10px] sm:tracking-[0.3em]">
                   <Globe2 size={14} /> {c.hero.kicker}
                 </p>
-                <h2 className="mt-6 max-w-3xl text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl">
+                <h2 className="mt-5 max-w-3xl text-[2.45rem] font-extrabold leading-[0.98] tracking-tight sm:mt-6 sm:text-5xl sm:leading-tight">
                   {c.hero.title}
                 </h2>
-                <p className="mt-5 max-w-2xl text-lg font-medium leading-relaxed text-gray-300">
+                <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-gray-300 sm:mt-5 sm:text-lg">
                   {c.hero.subtitle}
                 </p>
-                <div className="mt-7 flex flex-wrap gap-3">
+                <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                   <a
                     href="#contacto"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-[#F6692F] px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_12px_30px_-14px_rgba(246,105,47,0.92)] ring-1 ring-[#F6BA47]/45 transition hover:bg-[#f47d4d] hover:shadow-[0_18px_36px_-16px_rgba(246,105,47,0.95)]"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#F6692F] px-6 py-3 text-center text-[11px] font-black uppercase tracking-[0.16em] text-black shadow-[0_12px_30px_-14px_rgba(246,105,47,0.92)] ring-1 ring-[#F6BA47]/45 transition hover:bg-[#f47d4d] hover:shadow-[0_18px_36px_-16px_rgba(246,105,47,0.95)] sm:w-auto sm:text-xs sm:tracking-[0.18em]"
                   >
                     {c.hero.ctaPrimary} <ArrowRight size={15} />
                   </a>
                   <a
                     href="#programas"
-                    className="inline-flex items-center gap-2 rounded-2xl border border-white/25 bg-transparent px-6 py-3 text-xs font-bold uppercase tracking-[0.18em] text-[#ECECEC]/88 transition hover:border-[#F6BA47] hover:text-[#F6BA47]"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/25 bg-transparent px-6 py-3 text-center text-[11px] font-bold uppercase tracking-[0.16em] text-[#ECECEC]/88 transition hover:border-[#F6BA47] hover:text-[#F6BA47] sm:w-auto sm:text-xs sm:tracking-[0.18em]"
                   >
                     {c.hero.ctaSecondary}
                   </a>
                 </div>
+                <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                  {heroEditorialStats.map(item => (
+                    <article key={item.label} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
+                      <p className="text-2xl font-black tracking-tight text-[#F6BA47]">{item.value}</p>
+                      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.2em] text-white/70">{item.label}</p>
+                    </article>
+                  ))}
+                </div>
               </div>
 
-              <div className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-4 shadow-[0_20px_65px_-42px_rgba(0,0,0,0.8)] backdrop-blur">
+              <div className="space-y-3 rounded-3xl border border-white/10 bg-black/25 p-3 shadow-[0_20px_65px_-42px_rgba(0,0,0,0.8)] backdrop-blur sm:p-4">
                 <article className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md">
                   <div className="relative">
                     <Image
@@ -428,16 +630,26 @@ export default function PropuestaPage() {
                       alt="Escena moderna de ninos jugando ajedrez"
                       width={1200}
                       height={760}
-                      className="h-64 w-full object-cover sm:h-72"
+                      className="h-56 w-full object-cover sm:h-72"
                       priority
                     />
                     <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0.08)_0%,rgba(0,0,0,0.58)_100%)]" />
                     <div className="absolute bottom-4 left-4 right-4">
-                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#BAFCC7]">{c.heroSceneTag}</p>
-                      <p className="mt-2 text-base font-medium leading-relaxed text-gray-100">{c.heroSceneCaption}</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#BAFCC7] sm:text-[10px] sm:tracking-[0.24em]">{c.heroSceneTag}</p>
+                      <p className="mt-2 text-sm font-medium leading-relaxed text-gray-100 sm:text-base">{c.heroSceneCaption}</p>
                     </div>
-                    <div className="absolute right-4 top-4 inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-white">
-                      Video demo
+                    <div className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/35 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-white sm:right-4 sm:top-4 sm:px-3 sm:text-[10px] sm:tracking-[0.2em]">
+                      {lang === 'en' ? 'Institutional scene' : 'Escena institucional'}
+                    </div>
+                    <div className="absolute inset-x-4 bottom-4 hidden rounded-2xl border border-white/15 bg-slate-950/55 p-3 backdrop-blur-md sm:block">
+                      <div className="grid grid-cols-3 gap-3">
+                        {heroEditorialStats.map(item => (
+                          <div key={`${item.label}-overlay`} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                            <p className="text-lg font-black tracking-tight text-white">{item.value}</p>
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/65">{item.label}</p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -555,18 +767,24 @@ export default function PropuestaPage() {
             <h4 className="text-2xl font-extrabold leading-tight tracking-tight text-[#1d2b3a]">{c.projectsTitle}</h4>
             <p className="mt-3 max-w-3xl text-lg font-medium leading-relaxed text-gray-600">{c.projectsBody}</p>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {impactItems.map(item => (
-                <article key={item.title} className="rounded-2xl bg-white p-4 shadow-xl shadow-slate-900/10">
-                  <div className="mb-3 relative h-32 rounded-xl bg-[linear-gradient(145deg,#ecf4ff_0%,#f8fbff_45%,#ffffff_100%)] p-3">
-                    <div className="absolute inset-0 rounded-xl border border-dashed border-slate-300" />
+              {impactItems.map((item, index) => (
+                <article key={item.title} className="overflow-hidden rounded-[1.7rem] border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
+                  <div className={`relative h-44 bg-gradient-to-br ${item.accent} p-4`}>
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.95),transparent_42%)]" />
                     <div className="relative flex h-full flex-col justify-between">
-                      <div className="inline-flex w-max items-center gap-2 rounded-full bg-white/90 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">
-                        <ImageIcon size={12} /> Placeholder
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="inline-flex rounded-full bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">
+                          {item.eyebrow}
+                        </span>
+                        <span className="text-3xl font-black tracking-tight text-slate-900/20">0{index + 1}</span>
                       </div>
-                      <p className="text-[11px] font-bold leading-snug text-slate-700">{item.photo}</p>
+                      <p className="max-w-[18ch] text-sm font-bold leading-snug text-slate-700">{item.photo}</p>
                     </div>
                   </div>
-                  <p className="text-sm font-black leading-relaxed text-slate-700">{item.title}</p>
+                  <div className="p-5">
+                    <p className="text-lg font-black leading-tight tracking-tight text-slate-800">{item.title}</p>
+                    <p className="mt-3 text-sm font-medium leading-relaxed text-slate-600">{item.body}</p>
+                  </div>
                 </article>
               ))}
             </div>
@@ -604,7 +822,7 @@ export default function PropuestaPage() {
               {c.testimonials.map(item => (
                 <article key={item.quote} className="rounded-2xl bg-[#f8fbff] p-5 shadow-xl shadow-slate-900/5">
                   <Quote className="text-[#7C8AF6]" size={26} />
-                  <p className="mt-2 text-lg font-medium leading-relaxed text-gray-600">"{item.quote}"</p>
+                  <p className="mt-2 text-lg font-medium leading-relaxed text-gray-600">&ldquo;{item.quote}&rdquo;</p>
                   <div className="mt-4 flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#1d2b3a] text-[11px] font-black text-white">
                       {initials(item.author)}
@@ -619,17 +837,27 @@ export default function PropuestaPage() {
             </div>
           </section>
 
-          <section id="docentes" className="rounded-[2rem] border border-[#d9e3ef] bg-gradient-to-br from-[#eef7ff] to-white px-6 py-20 sm:px-8 sm:py-24">
+          <section id="docentes" className="rounded-[2rem] border border-[#d9e3ef] bg-gradient-to-br from-[#eef7ff] via-white to-[#fff6ed] px-6 py-20 sm:px-8 sm:py-24">
             <h4 className="text-2xl font-extrabold leading-tight tracking-tight text-[#1d2b3a]">Perfiles docentes destacados</h4>
             <p className="mt-3 max-w-3xl text-lg font-medium leading-relaxed text-gray-600">
-              Esta seccion quedo estructurada para publicar perfiles de profesores, especialidades, logros y enfoque pedagogico.
-              En la siguiente iteracion incorporamos fotos oficiales, certificados y testimonios.
+              {lang === 'en'
+                ? 'Use this section to introduce your teaching team with portraits, specialties, and concrete learning outcomes.'
+                : 'Usa esta seccion para presentar al equipo docente con retratos, especialidades y resultados de aprendizaje concretos.'}
             </p>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {['Metodologia por niveles', 'Psicologia deportiva aplicada', 'Preparacion competitiva'].map(item => (
-                <div key={item} className="rounded-2xl bg-white/85 p-4 text-sm font-black text-slate-700 shadow-lg shadow-slate-900/5">
-                  {item}
-                </div>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {teacherProfiles.map((item, index) => (
+                <article key={item.name} className="rounded-[1.7rem] border border-white/70 bg-white/90 p-5 shadow-xl shadow-slate-900/5 backdrop-blur">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-lg font-black text-white shadow-lg shadow-slate-900/15">
+                      0{index + 1}
+                    </div>
+                    <div>
+                      <p className="text-base font-black tracking-tight text-slate-800">{item.name}</p>
+                      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{item.role}</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm font-medium leading-relaxed text-slate-600">{item.body}</p>
+                </article>
               ))}
             </div>
           </section>
@@ -651,12 +879,18 @@ export default function PropuestaPage() {
           </section>
 
           <section className="rounded-[2rem] border border-[#cfdceb] bg-slate-900 px-6 py-20 text-white sm:px-10 sm:py-24">
-            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-300">Ready to enroll?</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-300">
+              {lang === 'en' ? 'Ready to enroll?' : 'Listos para comenzar?'}
+            </p>
             <h4 className="mt-3 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
-              Llevemos tu ruta de aprendizaje a un nivel internacional.
+              {lang === 'en'
+                ? 'Let us take your learning path to an international level.'
+                : 'Llevemos tu ruta de aprendizaje a un nivel internacional.'}
             </h4>
             <p className="mt-4 max-w-2xl text-lg font-medium leading-relaxed text-gray-400">
-              Agenda tu diagnostico gratis y recibe una propuesta academica personalizada en menos de 24 horas.
+              {lang === 'en'
+                ? 'Book your free diagnostic class and receive a personalized academic proposal in less than 24 hours.'
+                : 'Agenda tu diagnostico gratis y recibe una propuesta academica personalizada en menos de 24 horas.'}
             </p>
             <a
               href="https://wa.me/584126256525"
@@ -664,7 +898,7 @@ export default function PropuestaPage() {
               rel="noreferrer"
               className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#F6692F] px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-black shadow-[0_14px_34px_-14px_rgba(246,105,47,0.95)] ring-1 ring-[#F6BA47]/40 transition hover:bg-[#f47d4d] hover:shadow-[0_20px_40px_-16px_rgba(246,105,47,1)]"
             >
-              Contacto inmediato <ArrowRight size={15} />
+              {lang === 'en' ? 'Immediate contact' : 'Contacto inmediato'} <ArrowRight size={15} />
             </a>
           </section>
         </main>
@@ -674,14 +908,12 @@ export default function PropuestaPage() {
         </footer>
 
         <div className="pb-10 text-center">
-          <a
-            href="http://190.153.123.115:3000/gestion"
-            target="_blank"
-            rel="noopener noreferrer"
+          <Link
+            href="/login"
             className="inline-flex items-center gap-2 rounded-full bg-[#223449] px-6 py-3 text-xs font-black uppercase tracking-[0.18em] text-white shadow-md transition hover:bg-[#30445b] hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-[#F6BA47] focus:ring-offset-2"
           >
-            Acceder al sistema ANA
-          </a>
+            Acceder a ANA-FANA
+          </Link>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
@@ -57,7 +57,7 @@ export default function AppActivityTracker() {
   const lastHeartbeatRef = useRef(0)
   const trackerStatusRef = useRef<TrackerStatus>(createInitialTrackerStatus())
 
-  const publicarEstadoTracker = (nextStatus: TrackerStatus) => {
+  const publicarEstadoTracker = useCallback((nextStatus: TrackerStatus) => {
     trackerStatusRef.current = nextStatus
 
     if (typeof window === 'undefined') return
@@ -73,16 +73,16 @@ export default function AppActivityTracker() {
     } catch {
       // Ignore dispatch errors.
     }
-  }
+  }, [])
 
-  const actualizarEstadoTracker = (patch: Partial<TrackerStatus>) => {
+  const actualizarEstadoTracker = useCallback((patch: Partial<TrackerStatus>) => {
     publicarEstadoTracker({
       ...trackerStatusRef.current,
       ...patch,
     })
-  }
+  }, [publicarEstadoTracker])
 
-  const registrarEvento = async (eventType: ActivityEventType, route: string, forceHeartbeat = false) => {
+  const registrarEvento = useCallback(async (eventType: ActivityEventType, route: string, forceHeartbeat = false) => {
     if (!trackerEnabledRef.current) return
 
     const user = userRef.current
@@ -148,7 +148,7 @@ export default function AppActivityTracker() {
     if (eventType === 'heartbeat') {
       lastHeartbeatRef.current = Date.now()
     }
-  }
+  }, [actualizarEstadoTracker])
 
   useEffect(() => {
     routeRef.current = pathname || '/'
@@ -196,12 +196,12 @@ export default function AppActivityTracker() {
     return () => {
       activo = false
     }
-  }, [])
+  }, [publicarEstadoTracker, registrarEvento])
 
   useEffect(() => {
     if (!userRef.current) return
     void registrarEvento('page_view', pathname || '/', true)
-  }, [pathname])
+  }, [pathname, registrarEvento])
 
   useEffect(() => {
     publicarEstadoTracker(createInitialTrackerStatus())
@@ -230,7 +230,7 @@ export default function AppActivityTracker() {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onFocus)
     }
-  }, [])
+  }, [publicarEstadoTracker, registrarEvento])
 
   return null
 }

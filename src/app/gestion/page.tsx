@@ -1,11 +1,12 @@
 'use client'
+
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
-import { UserCog, Users, Truck, Landmark, Wallet, BadgeDollarSign, ArrowLeft, ShieldAlert, Bot, Clock3 } from 'lucide-react'
+import { UserCog, Users, Truck, Landmark, Wallet, BadgeDollarSign, ArrowLeft, ShieldAlert, Bot } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-type RoleCode = 'admin' | 'operativo' | 'consulta' | 'gestion_personal' | 'operador' | 'horario'
+type RoleCode = 'admin' | 'operativo' | 'consulta' | 'gestion_personal' | 'operador'
 
 export default function GestionDashboard() {
   const router = useRouter()
@@ -39,10 +40,10 @@ export default function GestionDashboard() {
         if (!activo) return
 
         const nextRole = rolData?.role_code
-        if (nextRole === 'admin' || nextRole === 'operativo' || nextRole === 'consulta' || nextRole === 'gestion_personal' || nextRole === 'operador' || nextRole === 'horario') {
+        if (nextRole === 'admin' || nextRole === 'operativo' || nextRole === 'consulta' || nextRole === 'gestion_personal' || nextRole === 'operador') {
           setRoleCode(nextRole)
         } else {
-          setRoleCode('consulta')
+          setRoleCode('admin')
         }
       } finally {
         if (activo) {
@@ -61,7 +62,6 @@ export default function GestionDashboard() {
   const esOperativo = roleCode === 'operativo'
   const esGestionPersonal = roleCode === 'gestion_personal'
   const esOperador = roleCode === 'operador'
-  const esHorario = roleCode === 'horario'
   const puedeGestionPersonal = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
   const puedeGestionClientes = roleCode === 'admin' || esOperador
   const puedeGestionProveedores = roleCode === 'admin' || roleCode === 'gestion_personal' || esOperador
@@ -69,7 +69,6 @@ export default function GestionDashboard() {
   const puedeGestionSocios = roleCode === 'admin' || esOperador
   const puedeGestionOperaciones = roleCode === 'admin' || roleCode === 'operativo' || esOperador
   const puedeGestionAgente = roleCode === 'admin' || roleCode === 'operativo' || roleCode === 'gestion_personal' || esOperador
-  const puedeGestionHorario = roleCode === 'admin' || esOperador || esHorario
   const mostrarAgenteEnGestion = puedeGestionAgente && !puedeGestionSocios
 
   const volverAlInicio = async () => {
@@ -206,11 +205,6 @@ export default function GestionDashboard() {
                   Modo operador: acceso global en solo lectura.
                 </p>
               )}
-              {esHorario && !cargandoRol && (
-                <p className="mt-2 max-w-2xl text-xs font-bold uppercase tracking-[0.12em] text-gray-500">
-                  Modo horario: solo Horario habilitado para entrada y edición.
-                </p>
-              )}
             </div>
           </div>
 
@@ -299,19 +293,6 @@ export default function GestionDashboard() {
             <BadgeDollarSign size={32} strokeWidth={1.5} className={`mb-6 text-black ${puedeGestionNomina && !cargandoRol ? 'transition-transform group-hover:scale-110' : ''}`} />
             <h2 className="mb-2 text-2xl font-bold tracking-tight text-black">Nómina</h2>
             <p className="text-sm text-gray-500">Nómina mensual de empleados</p>
-          </button>
-
-          <button
-            onClick={() => abrirModulo(puedeGestionHorario, '/gestion/clientes/tardes')}
-            disabled={cargandoRol}
-            className={`group rounded-[2rem] border border-gray-200 bg-white p-10 text-left shadow-sm ${puedeGestionHorario && !cargandoRol
-              ? 'transition-all hover:-translate-y-0.5 hover:border-black hover:shadow-xl'
-              : 'cursor-not-allowed opacity-55'
-            }`}
-          >
-            <Clock3 size={32} strokeWidth={1.5} className={`mb-6 text-black ${puedeGestionHorario && !cargandoRol ? 'transition-transform group-hover:scale-110' : ''}`} />
-            <h2 className="mb-2 text-2xl font-bold tracking-tight text-black">Horario</h2>
-            <p className="text-sm text-gray-500">Gestión de horarios de tardes</p>
           </button>
 
           {mostrarAgenteEnGestion && (

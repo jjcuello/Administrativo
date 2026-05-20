@@ -1894,7 +1894,10 @@ export default function GestionNominaPage() {
         .insert(detallePayload)
 
       if (detalleError && isMissingColumnError(detalleError, 'descuento_otras')) {
-        const legacyDetallePayload = detallePayload.map(({ descuento_otras, ...row }) => row)
+        const legacyDetallePayload = detallePayload.map(({ descuento_otras, ...row }) => {
+          void descuento_otras
+          return row
+        })
         const legacyInsert = await supabase
           .from('nominas_mensuales_detalle')
           .insert(legacyDetallePayload)

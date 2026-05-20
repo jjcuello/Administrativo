@@ -449,7 +449,13 @@ export default function GestionFamilias() {
   useEffect(() => {
     if (!repSeleccionado?.id) return
     if (tabPanelDerecho !== 'contable') return
-    void cargarFichaContableCliente()
+    const timerId = window.setTimeout(() => {
+      void cargarFichaContableCliente()
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
   }, [repSeleccionado?.id, tabPanelDerecho, cargarFichaContableCliente])
 
   const seleccionarAlumno = async (idAlumno?: string) => {

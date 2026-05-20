@@ -45,6 +45,8 @@ const CATEGORIAS_INGRESO_FIJAS: CategoriaIngresoSeed[] = [
   { nombre: 'Club Deportivo', descripcion: 'Ingresos provenientes del club deportivo' },
   { nombre: 'Aporte Capital', descripcion: 'Aportes de capital registrados como ingreso' },
   { nombre: 'Donaciones', descripcion: 'Donaciones y contribuciones' },
+  { nombre: 'Ventas Cantina', descripcion: 'Ingresos por ventas de cantina' },
+  { nombre: 'Ventas Material', descripcion: 'Ingresos por ventas de material' },
   { nombre: 'Transferencia Interna', descripcion: 'Traspasos entre cuentas propias que no representan ingresos operativos' },
 ]
 

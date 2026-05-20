@@ -370,7 +370,7 @@ const completeWithLocal = async (context: ProviderRequestContext): Promise<Provi
       text,
       source: 'model',
     }
-  } catch (error) {
+  } catch {
     return {
       providerUsed: 'local',
       text: buildFallbackText(context),
